@@ -171,46 +171,5 @@ router.post('/logout', (req, res) => {
   res.json({ message: 'Logged out successfully' });
 });
 
-// TEMPORARY: Setup endpoint to create initial user - REMOVE AFTER USE
-router.post('/setup-user', async (req, res) => {
-  const username = 'Gymnastika';
-  const email = 'gymnastika@gymnastika.com';
-  const password = 'AdamAli7';
-  const full_name = 'Gymnastika Admin';
-  const role = 'admin';
-
-  // Check if user already exists
-  db.get('SELECT id FROM users WHERE username = ? OR email = ?', [username, email], async (err, existingUser) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    if (existingUser) {
-      return res.json({ message: 'User already exists', username, hint: 'Password is AdamAli7' });
-    }
-
-    // Hash password
-    const passwordHash = await bcrypt.hash(password, 10);
-
-    // Create user
-    db.run(
-      'INSERT INTO users (username, email, password_hash, full_name, role) VALUES (?, ?, ?, ?, ?)',
-      [username, email, passwordHash, full_name, role],
-      function(err) {
-        if (err) {
-          return res.status(500).json({ error: 'Failed to create user' });
-        }
-
-        res.status(201).json({
-          message: 'User created successfully!',
-          credentials: {
-            username: 'Gymnastika',
-            password: 'AdamAli7'
-          }
-        });
-      }
-    );
-  });
-});
-
 module.exports = router;
 
