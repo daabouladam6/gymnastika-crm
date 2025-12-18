@@ -28,7 +28,7 @@ router.get('/create-users', async (req, res) => {
       const hash = await bcrypt.hash(user.password, 10);
       await new Promise((resolve, reject) => {
         db.run(
-          'INSERT INTO users (username, password) VALUES (?, ?)',
+          'INSERT INTO users (username, password_hash) VALUES (?, ?)',
           [user.username, hash],
           function(err) {
             if (err) reject(err);
