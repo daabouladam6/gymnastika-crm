@@ -1,13 +1,224 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../../database/db');
-const { sendWelcomeEmail, sendPTConfirmationEmail, sendPTReminderEmail, sendTrainerConfirmationEmail, sendTrainerReminderEmail, sendPTDateChangeEmail, sendTrainerDateChangeEmail, sendPTCancellationEmail, sendTrainerCancellationEmail } = require('../services/email');
+const { 
+  sendWelcomeEmail, 
+  sendPTConfirmationEmail, 
+  sendPTReminderEmail, 
+  sendTrainerConfirmationEmail, 
+  sendTrainerReminderEmail, 
+  sendPTDateChangeEmail, 
+  sendTrainerDateChangeEmail, 
+  sendPTCancellationEmail, 
+  sendTrainerCancellationEmail 
+} = require('../services/email');
+const { 
+  sendWelcomeWhatsApp,
+  sendPTConfirmationWhatsApp,
+  sendPTReminderWhatsApp,
+  sendTrainerConfirmationWhatsApp,
+  sendTrainerReminderWhatsApp,
+  sendPTDateChangeWhatsApp,
+  sendTrainerDateChangeWhatsApp,
+  sendPTCancellationWhatsApp,
+  sendTrainerCancellationWhatsApp,
+  isWhatsAppAvailable
+} = require('../services/whatsapp');
 
 // Helper function to check if a date is today
 function isToday(dateString) {
   const today = new Date();
   const ptDate = new Date(dateString);
   return today.toDateString() === ptDate.toDateString();
+}
+
+/**
+ * Send notifications to customer (email + WhatsApp)
+ */
+async function notifyCustomer(type, customer, options = {}) {
+  const { email, phone, name } = customer;
+  const { ptDate, ptTime, trainerEmail, oldDateTime, newDateTime } = options;
+  
+  const results = { email: null, whatsapp: null };
+  
+  switch (type) {
+    case 'welcome':
+      if (email) {
+        try {
+          await sendWelcomeEmail(email, name);
+          results.email = 'sent';
+          console.log(`✓ Welcome EMAIL sent to ${name} (${email})`);
+        } catch (err) {
+          results.email = 'failed';
+          console.error(`✗ Welcome email failed for ${name}:`, err.message);
+        }
+      }
+      if (phone && isWhatsAppAvailable()) {
+        try {
+          await sendWelcomeWhatsApp(phone, name);
+          results.whatsapp = 'sent';
+          console.log(`✓ Welcome WHATSAPP sent to ${name} (${phone})`);
+        } catch (err) {
+          results.whatsapp = 'failed';
+          console.error(`✗ Welcome WhatsApp failed for ${name}:`, err.message);
+        }
+      }
+      break;
+      
+    case 'pt_confirmation':
+      if (email) {
+        try {
+          await sendPTConfirmationEmail(email, name, ptDate, trainerEmail, ptTime);
+          results.email = 'sent';
+          console.log(`✓ PT Confirmation EMAIL sent to ${name}`);
+        } catch (err) {
+          results.email = 'failed';
+          console.error(`✗ PT confirmation email failed:`, err.message);
+        }
+      }
+      if (phone && isWhatsAppAvailable()) {
+        try {
+          await sendPTConfirmationWhatsApp(phone, name, ptDate, trainerEmail, ptTime);
+          results.whatsapp = 'sent';
+          console.log(`✓ PT Confirmation WHATSAPP sent to ${name}`);
+        } catch (err) {
+          results.whatsapp = 'failed';
+          console.error(`✗ PT confirmation WhatsApp failed:`, err.message);
+        }
+      }
+      break;
+      
+    case 'pt_reminder':
+      if (email) {
+        try {
+          await sendPTReminderEmail(email, name, ptDate, trainerEmail, ptTime);
+          results.email = 'sent';
+          console.log(`✓ PT Reminder EMAIL sent to ${name}`);
+        } catch (err) {
+          results.email = 'failed';
+          console.error(`✗ PT reminder email failed:`, err.message);
+        }
+      }
+      if (phone && isWhatsAppAvailable()) {
+        try {
+          await sendPTReminderWhatsApp(phone, name, ptDate, trainerEmail, ptTime);
+          results.whatsapp = 'sent';
+          console.log(`✓ PT Reminder WHATSAPP sent to ${name}`);
+        } catch (err) {
+          results.whatsapp = 'failed';
+          console.error(`✗ PT reminder WhatsApp failed:`, err.message);
+        }
+      }
+      break;
+      
+    case 'pt_date_change':
+      if (email) {
+        try {
+          await sendPTDateChangeEmail(email, name, oldDateTime, newDateTime, trainerEmail);
+          results.email = 'sent';
+          console.log(`✓ Date Change EMAIL sent to ${name}`);
+        } catch (err) {
+          results.email = 'failed';
+          console.error(`✗ Date change email failed:`, err.message);
+        }
+      }
+      if (phone && isWhatsAppAvailable()) {
+        try {
+          await sendPTDateChangeWhatsApp(phone, name, oldDateTime, newDateTime, trainerEmail);
+          results.whatsapp = 'sent';
+          console.log(`✓ Date Change WHATSAPP sent to ${name}`);
+        } catch (err) {
+          results.whatsapp = 'failed';
+          console.error(`✗ Date change WhatsApp failed:`, err.message);
+        }
+      }
+      break;
+      
+    case 'pt_cancellation':
+      if (email) {
+        try {
+          await sendPTCancellationEmail(email, name, oldDateTime, trainerEmail);
+          results.email = 'sent';
+          console.log(`✓ Cancellation EMAIL sent to ${name}`);
+        } catch (err) {
+          results.email = 'failed';
+          console.error(`✗ Cancellation email failed:`, err.message);
+        }
+      }
+      if (phone && isWhatsAppAvailable()) {
+        try {
+          await sendPTCancellationWhatsApp(phone, name, oldDateTime, trainerEmail);
+          results.whatsapp = 'sent';
+          console.log(`✓ Cancellation WHATSAPP sent to ${name}`);
+        } catch (err) {
+          results.whatsapp = 'failed';
+          console.error(`✗ Cancellation WhatsApp failed:`, err.message);
+        }
+      }
+      break;
+  }
+  
+  return results;
+}
+
+/**
+ * Send notifications to trainer (email + WhatsApp if configured)
+ */
+async function notifyTrainer(type, trainerEmail, customer, options = {}) {
+  const { email, phone, name } = customer;
+  const { ptDate, ptTime, oldDateTime, newDateTime } = options;
+  
+  if (!trainerEmail) return { email: null };
+  
+  const results = { email: null };
+  
+  switch (type) {
+    case 'pt_confirmation':
+      try {
+        await sendTrainerConfirmationEmail(trainerEmail, name, ptDate, email, phone, ptTime);
+        results.email = 'sent';
+        console.log(`✓ Trainer Confirmation EMAIL sent to ${trainerEmail}`);
+      } catch (err) {
+        results.email = 'failed';
+        console.error(`✗ Trainer confirmation email failed:`, err.message);
+      }
+      break;
+      
+    case 'pt_reminder':
+      try {
+        await sendTrainerReminderEmail(trainerEmail, name, ptDate, email, phone, ptTime);
+        results.email = 'sent';
+        console.log(`✓ Trainer Reminder EMAIL sent to ${trainerEmail}`);
+      } catch (err) {
+        results.email = 'failed';
+        console.error(`✗ Trainer reminder email failed:`, err.message);
+      }
+      break;
+      
+    case 'pt_date_change':
+      try {
+        await sendTrainerDateChangeEmail(trainerEmail, name, oldDateTime, newDateTime, email, phone);
+        results.email = 'sent';
+        console.log(`✓ Trainer Date Change EMAIL sent to ${trainerEmail}`);
+      } catch (err) {
+        results.email = 'failed';
+        console.error(`✗ Trainer date change email failed:`, err.message);
+      }
+      break;
+      
+    case 'pt_cancellation':
+      try {
+        await sendTrainerCancellationEmail(trainerEmail, name, oldDateTime, email, phone);
+        results.email = 'sent';
+        console.log(`✓ Trainer Cancellation EMAIL sent to ${trainerEmail}`);
+      } catch (err) {
+        results.email = 'failed';
+        console.error(`✗ Trainer cancellation email failed:`, err.message);
+      }
+      break;
+  }
+  
+  return results;
 }
 
 // Get all customers (excluding archived)
@@ -100,73 +311,36 @@ router.post('/', async (req, res) => {
   db.run(
     'INSERT INTO customers (name, phone, email, child_name, referral_source, notes, wants_pt, customer_type, pt_date, pt_time, trainer_email) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     [name, phone, email || null, child_name || null, referral_source || null, notes || null, wants_pt ? 1 : 0, customer_type || 'basic', pt_date || null, pt_time || null, trainer_email || null],
-    function(err) {
+    async function(err) {
       if (err) {
         return res.status(500).json({ error: err.message });
       }
       
       const customerId = this.lastID;
+      const customer = { name, email, phone };
       
-      // Send emails for PT customers
+      console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+      console.log(`📝 New Customer Created: ${name}`);
+      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+      
+      // Send notifications for PT customers
       if (customer_type === 'pt' && pt_date) {
-        // Send emails to CUSTOMER (if they have email)
-        if (email) {
-          // 1. Confirmation email to customer (includes trainer name and time)
-          sendPTConfirmationEmail(email, name, pt_date, trainer_email, pt_time)
-            .then(() => {
-              console.log(`✓ PT CONFIRMATION email sent to CUSTOMER ${name} (${email}) for session on ${pt_date}${pt_time ? ' at ' + pt_time : ''}`);
-            })
-            .catch(err => {
-              console.error(`✗ Failed to send PT confirmation email to customer ${name} (${email}):`, err.message);
-            });
-          
-          // 2. Reminder email to customer (if PT date is TODAY) - includes trainer name and time
-          if (isToday(pt_date)) {
-            setTimeout(() => {
-              sendPTReminderEmail(email, name, pt_date, trainer_email, pt_time)
-                .then(() => {
-                  console.log(`✓ PT REMINDER email sent to CUSTOMER ${name} (${email}) - session is TODAY!`);
-                })
-                .catch(err => {
-                  console.error(`✗ Failed to send PT reminder email to customer ${name} (${email}):`, err.message);
-                });
-            }, 2000);
-          }
+        // Send confirmation to customer
+        await notifyCustomer('pt_confirmation', customer, { ptDate: pt_date, ptTime: pt_time, trainerEmail: trainer_email });
+        
+        // Send confirmation to trainer
+        await notifyTrainer('pt_confirmation', trainer_email, customer, { ptDate: pt_date, ptTime: pt_time });
+        
+        // If PT date is TODAY, also send reminder
+        if (isToday(pt_date)) {
+          setTimeout(async () => {
+            await notifyCustomer('pt_reminder', customer, { ptDate: pt_date, ptTime: pt_time, trainerEmail: trainer_email });
+            await notifyTrainer('pt_reminder', trainer_email, customer, { ptDate: pt_date, ptTime: pt_time });
+          }, 2000);
         }
-
-        // Send emails to TRAINER
-        if (trainer_email) {
-          // 1. Confirmation email to trainer (includes time)
-          sendTrainerConfirmationEmail(trainer_email, name, pt_date, email, phone, pt_time)
-            .then(() => {
-              console.log(`✓ PT CONFIRMATION email sent to TRAINER (${trainer_email}) about client ${name} for session on ${pt_date}${pt_time ? ' at ' + pt_time : ''}`);
-            })
-            .catch(err => {
-              console.error(`✗ Failed to send PT confirmation email to trainer (${trainer_email}):`, err.message);
-            });
-          
-          // 2. Reminder email to trainer (if PT date is TODAY) - includes time
-          if (isToday(pt_date)) {
-            setTimeout(() => {
-              sendTrainerReminderEmail(trainer_email, name, pt_date, email, phone, pt_time)
-                .then(() => {
-                  console.log(`✓ PT REMINDER email sent to TRAINER (${trainer_email}) about client ${name} - session is TODAY!`);
-                })
-                .catch(err => {
-                  console.error(`✗ Failed to send PT reminder email to trainer (${trainer_email}):`, err.message);
-                });
-            }, 2000);
-          }
-        }
-      } else if (email) {
-        // Basic customers get the welcome email
-        sendWelcomeEmail(email, name)
-          .then(() => {
-            console.log(`✓ Welcome email sent to ${name} (${email})`);
-          })
-          .catch(err => {
-            console.error(`✗ Failed to send welcome email to ${name} (${email}):`, err.message);
-          });
+      } else {
+        // Basic customers get the welcome message
+        await notifyCustomer('welcome', customer);
       }
       
       res.status(201).json({ 
@@ -211,7 +385,7 @@ router.put('/:id', (req, res) => {
     db.run(
       'UPDATE customers SET name = ?, phone = ?, email = ?, child_name = ?, referral_source = ?, notes = ?, wants_pt = ?, customer_type = ?, pt_date = ?, pt_time = ?, trainer_email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
       [name, phone, email || null, child_name || null, referral_source || null, notes || null, wants_pt ? 1 : 0, customer_type || 'basic', pt_date || null, pt_time || null, trainer_email || null, req.params.id],
-      function(updateErr) {
+      async function(updateErr) {
         if (updateErr) {
           return res.status(500).json({ error: updateErr.message });
         }
@@ -219,38 +393,28 @@ router.put('/:id', (req, res) => {
           return res.status(404).json({ error: 'Customer not found' });
         }
         
-        // If PT date or time changed, send notification emails
+        // If PT date or time changed, send notification
         if (dateOrTimeChanged) {
+          console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+          console.log(`📅 PT Session Rescheduled: ${name}`);
+          console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+          
           const customerEmail = email || oldCustomer.email;
+          const customerPhone = phone || oldCustomer.phone;
           const trainerEmailAddr = trainer_email || oldCustomer.trainer_email;
           const customerName = name || oldCustomer.name;
-          const customerPhone = phone || oldCustomer.phone;
           
           // Format old and new datetime for display
           const oldDateTime = oldPtTime ? `${oldPtDate} at ${oldPtTime}` : oldPtDate;
           const newDateTime = newPtTime ? `${newPtDate} at ${newPtTime}` : newPtDate;
           
-          // Send date change email to customer (includes trainer name and time)
-          if (customerEmail) {
-            sendPTDateChangeEmail(customerEmail, customerName, oldDateTime, newDateTime, trainerEmailAddr)
-              .then(() => {
-                console.log(`✓ PT DATE CHANGE email sent to CUSTOMER ${customerName} (${customerEmail}): ${oldDateTime} → ${newDateTime}`);
-              })
-              .catch(err => {
-                console.error(`✗ Failed to send date change email to customer ${customerName}:`, err.message);
-              });
-          }
+          const customer = { name: customerName, email: customerEmail, phone: customerPhone };
           
-          // Send date change email to trainer
-          if (trainerEmailAddr) {
-            sendTrainerDateChangeEmail(trainerEmailAddr, customerName, oldDateTime, newDateTime, customerEmail, customerPhone)
-              .then(() => {
-                console.log(`✓ PT DATE CHANGE email sent to TRAINER (${trainerEmailAddr}) about client ${customerName}: ${oldDateTime} → ${newDateTime}`);
-              })
-              .catch(err => {
-                console.error(`✗ Failed to send date change email to trainer:`, err.message);
-              });
-          }
+          // Notify customer
+          await notifyCustomer('pt_date_change', customer, { oldDateTime, newDateTime, trainerEmail: trainerEmailAddr });
+          
+          // Notify trainer
+          await notifyTrainer('pt_date_change', trainerEmailAddr, customer, { oldDateTime, newDateTime });
         }
         
         res.json({ message: 'Customer updated successfully' });
@@ -261,7 +425,7 @@ router.put('/:id', (req, res) => {
 
 // Archive customer (soft delete)
 router.delete('/:id', (req, res) => {
-  // First, get customer info for sending cancellation emails (if PT customer)
+  // First, get customer info for sending cancellation notifications
   db.get('SELECT * FROM customers WHERE id = ?', [req.params.id], (err, customer) => {
     if (err) {
       return res.status(500).json({ error: err.message });
@@ -274,7 +438,7 @@ router.delete('/:id', (req, res) => {
     db.run(
       'UPDATE customers SET archived = 1, archived_at = CURRENT_TIMESTAMP WHERE id = ?',
       [req.params.id],
-      function(archiveErr) {
+      async function(archiveErr) {
         if (archiveErr) {
           return res.status(500).json({ error: archiveErr.message });
         }
@@ -282,32 +446,31 @@ router.delete('/:id', (req, res) => {
           return res.status(404).json({ error: 'Customer not found' });
         }
         
-        // Send cancellation emails for PT customers
+        // Send cancellation notifications for PT customers
         if (customer.customer_type === 'pt' && customer.pt_date) {
+          console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+          console.log(`❌ PT Session Cancelled: ${customer.name}`);
+          console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+          
           // Format datetime for display
           const ptDateTime = customer.pt_time ? `${customer.pt_date} at ${customer.pt_time}` : customer.pt_date;
           
-          // Send cancellation email to customer (includes trainer name and time)
-          if (customer.email) {
-            sendPTCancellationEmail(customer.email, customer.name, ptDateTime, customer.trainer_email)
-              .then(() => {
-                console.log(`✓ PT CANCELLATION email sent to CUSTOMER ${customer.name} (${customer.email})`);
-              })
-              .catch(err => {
-                console.error(`✗ Failed to send cancellation email to customer ${customer.name}:`, err.message);
-              });
-          }
+          const customerData = { 
+            name: customer.name, 
+            email: customer.email, 
+            phone: customer.phone 
+          };
           
-          // Send cancellation email to trainer (includes time)
-          if (customer.trainer_email) {
-            sendTrainerCancellationEmail(customer.trainer_email, customer.name, ptDateTime, customer.email, customer.phone)
-              .then(() => {
-                console.log(`✓ PT CANCELLATION email sent to TRAINER (${customer.trainer_email}) about client ${customer.name}`);
-              })
-              .catch(err => {
-                console.error(`✗ Failed to send cancellation email to trainer:`, err.message);
-              });
-          }
+          // Notify customer
+          await notifyCustomer('pt_cancellation', customerData, { 
+            oldDateTime: ptDateTime, 
+            trainerEmail: customer.trainer_email 
+          });
+          
+          // Notify trainer
+          await notifyTrainer('pt_cancellation', customer.trainer_email, customerData, { 
+            oldDateTime: ptDateTime 
+          });
         }
         
         res.json({ message: 'Customer archived successfully' });
@@ -362,4 +525,3 @@ router.delete('/:id/permanent', (req, res) => {
 });
 
 module.exports = router;
-

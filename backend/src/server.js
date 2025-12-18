@@ -4,6 +4,7 @@ const cors = require('cors');
 const customerRoutes = require('./routes/customers');
 const reminderRoutes = require('./routes/reminders');
 const authRoutes = require('./routes/auth');
+const whatsappRoutes = require('./routes/whatsapp');
 const errorHandler = require('./middleware/errorHandler');
 const { startReminderScheduler } = require('./services/reminderScheduler');
 
@@ -47,6 +48,7 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/reminders', reminderRoutes);
+app.use('/api/whatsapp', whatsappRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -65,6 +67,7 @@ app.get('/', (req, res) => {
     endpoints: {
       customers: '/api/customers',
       reminders: '/api/reminders',
+      whatsapp: '/api/whatsapp',
       health: '/api/health'
     }
   });
