@@ -5,8 +5,8 @@ const db = require('../../database/db');
 
 router.get('/create-users', async (req, res) => {
   const usersToCreate = [
-    { username: 'aliwehbe', password: 'AdamAli7' },
-    { username: 'Gymnastika', password: 'AdamAli7' }
+    { username: 'aliwehbe', password: 'AdamAli7', email: 'aliwehbe@gymnastika.com' },
+    { username: 'Gymnastika', password: 'AdamAli7', email: 'Gymnastika.lb@gmail.com' }
   ];
 
   const results = [];
@@ -14,7 +14,7 @@ router.get('/create-users', async (req, res) => {
   for (const user of usersToCreate) {
     try {
       const existingUser = await new Promise((resolve, reject) => {
-        db.get('SELECT id FROM users WHERE username = ?', [user.username], (err, row) => {
+        db.get('SELECT id FROM users WHERE username = ? OR email = ?', [user.username, user.email], (err, row) => {
           if (err) reject(err);
           else resolve(row);
         });
@@ -28,8 +28,8 @@ router.get('/create-users', async (req, res) => {
       const hash = await bcrypt.hash(user.password, 10);
       await new Promise((resolve, reject) => {
         db.run(
-          'INSERT INTO users (username, password_hash) VALUES (?, ?)',
-          [user.username, hash],
+          'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)',
+          [user.username, user.email, hash],
           function(err) {
             if (err) reject(err);
             else resolve(this.lastID);
