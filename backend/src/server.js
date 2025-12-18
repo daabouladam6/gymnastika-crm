@@ -4,7 +4,6 @@ const cors = require('cors');
 const customerRoutes = require('./routes/customers');
 const reminderRoutes = require('./routes/reminders');
 const authRoutes = require('./routes/auth');
-const setupRoutes = require('./routes/setup'); // TEMPORARY - DELETE AFTER USE
 const errorHandler = require('./middleware/errorHandler');
 const { startReminderScheduler } = require('./services/reminderScheduler');
 
@@ -48,7 +47,6 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/reminders', reminderRoutes);
-app.use('/api/setup', setupRoutes); // TEMPORARY - DELETE AFTER USE
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
