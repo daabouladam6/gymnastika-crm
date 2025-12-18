@@ -5,8 +5,8 @@ const db = require('../../database/db');
 
 router.get('/create-users', async (req, res) => {
   const usersToCreate = [
-    { username: 'aliwehbe', password: 'AdamAli7', email: 'aliwehbe@gymnastika.com' },
-    { username: 'Gymnastika', password: 'AdamAli7', email: 'Gymnastika.lb@gmail.com' }
+    { username: 'aliwehbe', password: 'AdamAli7', email: 'aliwehbe@gymnastika.com', full_name: 'Ali Wehbe', role: 'employee' },
+    { username: 'Gymnastika', password: 'AdamAli7', email: 'Gymnastika.lb@gmail.com', full_name: 'Gymnastika Admin', role: 'admin' }
   ];
 
   const results = [];
@@ -28,8 +28,8 @@ router.get('/create-users', async (req, res) => {
       const hash = await bcrypt.hash(user.password, 10);
       await new Promise((resolve, reject) => {
         db.run(
-          'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)',
-          [user.username, user.email, hash],
+          'INSERT INTO users (username, email, password_hash, full_name, role) VALUES (?, ?, ?, ?, ?)',
+          [user.username, user.email, hash, user.full_name, user.role],
           function(err) {
             if (err) reject(err);
             else resolve(this.lastID);
