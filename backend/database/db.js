@@ -33,7 +33,6 @@ if (isPostgres) {
       pool.query(pgSql, params)
         .then(result => {
           if (callback) {
-            // Mimic SQLite's this.lastID and this.changes
             const context = {
               lastID: result.rows[0]?.id || null,
               changes: result.rowCount
