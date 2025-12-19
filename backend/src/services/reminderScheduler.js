@@ -16,7 +16,7 @@ function checkPTReminders() {
   console.log('🔔 Checking for PT reminders...');
   
   const query = `
-    SELECT id, name, email, phone, pt_date, pt_time, trainer_email 
+    SELECT id, name, email, phone, pt_date, pt_time, trainer_email, child_name 
     FROM customers 
     WHERE customer_type = 'pt' 
       AND pt_date = date('now')
@@ -66,11 +66,11 @@ function checkPTReminders() {
       
       // ====== SEND TO TRAINER ======
       if (customer.trainer_email) {
-        console.log(`  📧 Trainer: ${customer.trainer_email}`);
+        console.log(`  📧 Trainer: ${customer.trainer_email}${customer.child_name ? ` (Child: ${customer.child_name})` : ''}`);
         
         // Email reminder to trainer
         try {
-          await sendTrainerReminderEmail(customer.trainer_email, customer.name, customer.pt_date, customer.email, customer.phone, customer.pt_time);
+          await sendTrainerReminderEmail(customer.trainer_email, customer.name, customer.pt_date, customer.email, customer.phone, customer.pt_time, customer.child_name);
           console.log(`    ✓ Email sent to trainer`);
         } catch (err) {
           console.error(`    ✗ Email failed: ${err.message}`);
