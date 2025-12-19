@@ -1,5 +1,4 @@
 require('dotenv').config();
-const { Pool } = require('pg');
 
 // Check if DATABASE_URL is set (PostgreSQL), otherwise fall back to SQLite for local dev
 const isPostgres = !!process.env.DATABASE_URL;
@@ -7,10 +6,12 @@ const isPostgres = !!process.env.DATABASE_URL;
 let db;
 
 if (isPostgres) {
-  // PostgreSQL configuration for production (Render)
+  // PostgreSQL configuration for production (Supabase/Neon/etc)
+  const { Pool } = require('pg');
+  
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+    ssl: { rejectUnauthorized: false }
   });
 
   // Create a SQLite-compatible wrapper for PostgreSQL
@@ -41,12 +42,12 @@ if (isPostgres) {
           }
         })
         .catch(err => {
+          console.error('PostgreSQL query error:', err.message);
           if (callback) callback(err);
         });
     },
 
     get: function(sql, params = [], callback) {
-      // Handle case where params is the callback
       if (typeof params === 'function') {
         callback = params;
         params = [];
@@ -57,12 +58,12 @@ if (isPostgres) {
           if (callback) callback(null, result.rows[0] || null);
         })
         .catch(err => {
+          console.error('PostgreSQL query error:', err.message);
           if (callback) callback(err, null);
         });
     },
 
     all: function(sql, params = [], callback) {
-      // Handle case where params is the callback
       if (typeof params === 'function') {
         callback = params;
         params = [];
@@ -73,25 +74,19 @@ if (isPostgres) {
           if (callback) callback(null, result.rows);
         })
         .catch(err => {
+          console.error('PostgreSQL query error:', err.message);
           if (callback) callback(err, []);
         });
     },
 
     serialize: function(callback) {
-      // PostgreSQL doesn't need serialize, just run the callback
       if (callback) callback();
-    },
-
-    // Direct query method for PostgreSQL
-    query: function(sql, params = []) {
-      return pool.query(this.convertPlaceholders(sql), params);
     }
   };
 
   // Initialize PostgreSQL tables
   const initPostgres = async () => {
     try {
-      // Create customers table
       await pool.query(`
         CREATE TABLE IF NOT EXISTS customers (
           id SERIAL PRIMARY KEY,
@@ -114,11 +109,10 @@ if (isPostgres) {
         )
       `);
 
-      // Create reminders table
       await pool.query(`
         CREATE TABLE IF NOT EXISTS reminders (
           id SERIAL PRIMARY KEY,
-          customer_id INTEGER NOT NULL REFERENCES customers(id),
+          customer_id INTEGER NOT NULL,
           reminder_date DATE NOT NULL,
           reminder_type TEXT DEFAULT 'follow_up',
           completed INTEGER DEFAULT 0,
@@ -127,11 +121,6 @@ if (isPostgres) {
         )
       `);
 
-      // Create indexes for reminders
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_reminder_date ON reminders(reminder_date)`);
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_reminder_completed ON reminders(completed)`);
-
-      // Create users table
       await pool.query(`
         CREATE TABLE IF NOT EXISTS users (
           id SERIAL PRIMARY KEY,
@@ -145,25 +134,16 @@ if (isPostgres) {
         )
       `);
 
-      // Create indexes for users
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_username ON users(username)`);
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_email ON users(email)`);
-
-      // Create sessions table
       await pool.query(`
         CREATE TABLE IF NOT EXISTS sessions (
           id TEXT PRIMARY KEY,
-          user_id INTEGER NOT NULL REFERENCES users(id),
+          user_id INTEGER NOT NULL,
           expires_at TIMESTAMP NOT NULL,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `);
 
-      // Create indexes for customers
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_pt_date ON customers(pt_date)`);
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_customer_type ON customers(customer_type)`);
-
-      console.log('✅ PostgreSQL database initialized successfully');
+      console.log('✅ PostgreSQL database connected and initialized (Supabase)');
     } catch (err) {
       console.error('❌ PostgreSQL initialization error:', err.message);
     }
@@ -179,7 +159,6 @@ if (isPostgres) {
   const dbPath = path.join(__dirname, 'customers.db');
   db = new sqlite3.Database(dbPath);
 
-  // Initialize SQLite database
   db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS customers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -195,7 +174,6 @@ if (isPostgres) {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
 
-    // Add columns if they don't exist (for existing databases)
     db.run(`ALTER TABLE customers ADD COLUMN child_name TEXT`, () => {});
     db.run(`ALTER TABLE customers ADD COLUMN referral_source TEXT`, () => {});
     db.run(`ALTER TABLE customers ADD COLUMN pt_date DATE`, () => {});
@@ -216,9 +194,6 @@ if (isPostgres) {
       FOREIGN KEY (customer_id) REFERENCES customers(id)
     )`);
 
-    db.run(`CREATE INDEX IF NOT EXISTS idx_reminder_date ON reminders(reminder_date)`);
-    db.run(`CREATE INDEX IF NOT EXISTS idx_reminder_completed ON reminders(completed)`);
-
     db.run(`CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
@@ -230,9 +205,6 @@ if (isPostgres) {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
 
-    db.run(`CREATE INDEX IF NOT EXISTS idx_username ON users(username)`);
-    db.run(`CREATE INDEX IF NOT EXISTS idx_email ON users(email)`);
-
     db.run(`CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
       user_id INTEGER NOT NULL,
@@ -240,9 +212,6 @@ if (isPostgres) {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id)
     )`);
-
-    db.run(`CREATE INDEX IF NOT EXISTS idx_pt_date ON customers(pt_date)`);
-    db.run(`CREATE INDEX IF NOT EXISTS idx_customer_type ON customers(customer_type)`);
   });
 
   console.log('✅ SQLite database initialized (local development)');
