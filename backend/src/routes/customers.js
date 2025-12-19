@@ -165,7 +165,7 @@ async function notifyCustomer(type, customer, options = {}) {
  * Send notifications to trainer (email + WhatsApp if configured)
  */
 async function notifyTrainer(type, trainerEmail, customer, options = {}) {
-  const { email, phone, name, childName } = customer;
+  const { email, phone, name } = customer;
   const { ptDate, ptTime, oldDateTime, newDateTime } = options;
   
   if (!trainerEmail) return { email: null };
@@ -175,9 +175,9 @@ async function notifyTrainer(type, trainerEmail, customer, options = {}) {
   switch (type) {
     case 'pt_confirmation':
       try {
-        await sendTrainerConfirmationEmail(trainerEmail, name, ptDate, email, phone, ptTime, childName);
+        await sendTrainerConfirmationEmail(trainerEmail, name, ptDate, email, phone, ptTime);
         results.email = 'sent';
-        console.log(`✓ Trainer Confirmation EMAIL sent to ${trainerEmail}${childName ? ` (child: ${childName})` : ''}`);
+        console.log(`✓ Trainer Confirmation EMAIL sent to ${trainerEmail}`);
       } catch (err) {
         results.email = 'failed';
         console.error(`✗ Trainer confirmation email failed:`, err.message);
@@ -186,9 +186,9 @@ async function notifyTrainer(type, trainerEmail, customer, options = {}) {
       
     case 'pt_reminder':
       try {
-        await sendTrainerReminderEmail(trainerEmail, name, ptDate, email, phone, ptTime, childName);
+        await sendTrainerReminderEmail(trainerEmail, name, ptDate, email, phone, ptTime);
         results.email = 'sent';
-        console.log(`✓ Trainer Reminder EMAIL sent to ${trainerEmail}${childName ? ` (child: ${childName})` : ''}`);
+        console.log(`✓ Trainer Reminder EMAIL sent to ${trainerEmail}`);
       } catch (err) {
         results.email = 'failed';
         console.error(`✗ Trainer reminder email failed:`, err.message);
@@ -197,9 +197,9 @@ async function notifyTrainer(type, trainerEmail, customer, options = {}) {
       
     case 'pt_date_change':
       try {
-        await sendTrainerDateChangeEmail(trainerEmail, name, oldDateTime, newDateTime, email, phone, childName);
+        await sendTrainerDateChangeEmail(trainerEmail, name, oldDateTime, newDateTime, email, phone);
         results.email = 'sent';
-        console.log(`✓ Trainer Date Change EMAIL sent to ${trainerEmail}${childName ? ` (child: ${childName})` : ''}`);
+        console.log(`✓ Trainer Date Change EMAIL sent to ${trainerEmail}`);
       } catch (err) {
         results.email = 'failed';
         console.error(`✗ Trainer date change email failed:`, err.message);
@@ -208,9 +208,9 @@ async function notifyTrainer(type, trainerEmail, customer, options = {}) {
       
     case 'pt_cancellation':
       try {
-        await sendTrainerCancellationEmail(trainerEmail, name, oldDateTime, email, phone, childName);
+        await sendTrainerCancellationEmail(trainerEmail, name, oldDateTime, email, phone);
         results.email = 'sent';
-        console.log(`✓ Trainer Cancellation EMAIL sent to ${trainerEmail}${childName ? ` (child: ${childName})` : ''}`);
+        console.log(`✓ Trainer Cancellation EMAIL sent to ${trainerEmail}`);
       } catch (err) {
         results.email = 'failed';
         console.error(`✗ Trainer cancellation email failed:`, err.message);
@@ -317,10 +317,10 @@ router.post('/', async (req, res) => {
       }
       
       const customerId = this.lastID;
-      const customer = { name, email, phone, childName: child_name };
+      const customer = { name, email, phone };
       
       console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-      console.log(`📝 New Customer Created: ${name}${child_name ? ` (Child: ${child_name})` : ''}`);
+      console.log(`📝 New Customer Created: ${name}`);
       console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
       
       // Send notifications for PT customers
@@ -408,8 +408,7 @@ router.put('/:id', (req, res) => {
           const oldDateTime = oldPtTime ? `${oldPtDate} at ${oldPtTime}` : oldPtDate;
           const newDateTime = newPtTime ? `${newPtDate} at ${newPtTime}` : newPtDate;
           
-          const customerChildName = child_name || oldCustomer.child_name;
-          const customer = { name: customerName, email: customerEmail, phone: customerPhone, childName: customerChildName };
+          const customer = { name: customerName, email: customerEmail, phone: customerPhone };
           
           // Notify customer
           await notifyCustomer('pt_date_change', customer, { oldDateTime, newDateTime, trainerEmail: trainerEmailAddr });
@@ -459,8 +458,7 @@ router.delete('/:id', (req, res) => {
           const customerData = { 
             name: customer.name, 
             email: customer.email, 
-            phone: customer.phone,
-            childName: customer.child_name
+            phone: customer.phone 
           };
           
           // Notify customer

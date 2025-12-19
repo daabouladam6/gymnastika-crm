@@ -1,8 +1,5 @@
 {
   "framework": "nextjs",
   "buildCommand": "npm run build",
-  "installCommand": "npm install",
-  "env": {
-    "NEXT_PUBLIC_API_URL": "https://gymnastika-backend.onrender.com/api"
-  }
+  "installCommand": "npm install"
 }

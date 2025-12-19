@@ -4,10 +4,6 @@ import axios from 'axios';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
-// #region agent log
-console.log('[DEBUG] API_URL configured as:', API_URL);
-// #endregion
-
 export default function Login() {
   const router = useRouter();
   const [formData, setFormData] = useState({
@@ -16,14 +12,9 @@ export default function Login() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  // #region agent log
-  const [debugInfo, setDebugInfo] = useState('');
-  // #endregion
 
   // #region agent log
   useEffect(() => {
-    console.log('[DEBUG] Login component mounted, API_URL:', API_URL);
-    setDebugInfo(`API: ${API_URL}`);
     fetch('http://127.0.0.1:7242/ingest/18f6da49-6ee8-4649-abc9-c0e542b9745c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'login.jsx:component-mount',message:'Login page mounted',data:{apiUrl:API_URL,hasRouter:!!router},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
   }, []);
   // #endregion
@@ -62,12 +53,6 @@ export default function Login() {
       router.push('/');
     } catch (error) {
       // #region agent log
-      console.error('[DEBUG] Login error details:', {
-        message: error.message,
-        status: error.response?.status,
-        data: error.response?.data,
-        url: `${API_URL}/auth/login`
-      });
       fetch('http://127.0.0.1:7242/ingest/18f6da49-6ee8-4649-abc9-c0e542b9745c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'login.jsx:api-error',message:'Login API call failed',data:{errorMessage:error.message,statusCode:error.response?.status,responseData:error.response?.data,url:`${API_URL}/auth/login`},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
       // #endregion
 
@@ -83,14 +68,6 @@ export default function Login() {
       <div className="login-box">
         <h1>Customer CRM</h1>
         <p className="subtitle">Employee Login</p>
-        
-        {/* #region agent log */}
-        {debugInfo && (
-          <p style={{ fontSize: '10px', color: '#666', marginBottom: '10px', wordBreak: 'break-all' }}>
-            DEBUG: {debugInfo}
-          </p>
-        )}
-        {/* #endregion */}
         
         {error && (
           <div className="alert alert-error">
