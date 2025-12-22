@@ -24,6 +24,7 @@ const {
   sendTrainerCancellationWhatsApp,
   isWhatsAppAvailable
 } = require('../services/whatsapp');
+const { getTrainerPhone } = require('../config/trainers');
 
 // Helper function to check if a date is today
 function isToday(dateString) {
@@ -168,12 +169,16 @@ async function notifyTrainer(type, trainerEmail, customer, options = {}) {
   const { email, phone, name } = customer;
   const { ptDate, ptTime, oldDateTime, newDateTime } = options;
   
-  if (!trainerEmail) return { email: null };
+  if (!trainerEmail) return { email: null, whatsapp: null };
   
-  const results = { email: null };
+  const results = { email: null, whatsapp: null };
+  
+  // Get trainer's phone number for WhatsApp
+  const trainerPhone = getTrainerPhone(trainerEmail);
   
   switch (type) {
     case 'pt_confirmation':
+      // Email to trainer
       try {
         await sendTrainerConfirmationEmail(trainerEmail, name, ptDate, email, phone, ptTime);
         results.email = 'sent';
@@ -182,9 +187,21 @@ async function notifyTrainer(type, trainerEmail, customer, options = {}) {
         results.email = 'failed';
         console.error(`✗ Trainer confirmation email failed:`, err.message);
       }
+      // WhatsApp to trainer
+      if (trainerPhone && isWhatsAppAvailable()) {
+        try {
+          await sendTrainerConfirmationWhatsApp(trainerPhone, name, ptDate, email, phone, ptTime);
+          results.whatsapp = 'sent';
+          console.log(`✓ Trainer Confirmation WHATSAPP sent to ${trainerPhone}`);
+        } catch (err) {
+          results.whatsapp = 'failed';
+          console.error(`✗ Trainer confirmation WhatsApp failed:`, err.message);
+        }
+      }
       break;
       
     case 'pt_reminder':
+      // Email to trainer
       try {
         await sendTrainerReminderEmail(trainerEmail, name, ptDate, email, phone, ptTime);
         results.email = 'sent';
@@ -193,9 +210,21 @@ async function notifyTrainer(type, trainerEmail, customer, options = {}) {
         results.email = 'failed';
         console.error(`✗ Trainer reminder email failed:`, err.message);
       }
+      // WhatsApp to trainer
+      if (trainerPhone && isWhatsAppAvailable()) {
+        try {
+          await sendTrainerReminderWhatsApp(trainerPhone, name, ptDate, email, phone, ptTime);
+          results.whatsapp = 'sent';
+          console.log(`✓ Trainer Reminder WHATSAPP sent to ${trainerPhone}`);
+        } catch (err) {
+          results.whatsapp = 'failed';
+          console.error(`✗ Trainer reminder WhatsApp failed:`, err.message);
+        }
+      }
       break;
       
     case 'pt_date_change':
+      // Email to trainer
       try {
         await sendTrainerDateChangeEmail(trainerEmail, name, oldDateTime, newDateTime, email, phone);
         results.email = 'sent';
@@ -204,9 +233,21 @@ async function notifyTrainer(type, trainerEmail, customer, options = {}) {
         results.email = 'failed';
         console.error(`✗ Trainer date change email failed:`, err.message);
       }
+      // WhatsApp to trainer
+      if (trainerPhone && isWhatsAppAvailable()) {
+        try {
+          await sendTrainerDateChangeWhatsApp(trainerPhone, name, oldDateTime, newDateTime, email, phone);
+          results.whatsapp = 'sent';
+          console.log(`✓ Trainer Date Change WHATSAPP sent to ${trainerPhone}`);
+        } catch (err) {
+          results.whatsapp = 'failed';
+          console.error(`✗ Trainer date change WhatsApp failed:`, err.message);
+        }
+      }
       break;
       
     case 'pt_cancellation':
+      // Email to trainer
       try {
         await sendTrainerCancellationEmail(trainerEmail, name, oldDateTime, email, phone);
         results.email = 'sent';
@@ -214,6 +255,17 @@ async function notifyTrainer(type, trainerEmail, customer, options = {}) {
       } catch (err) {
         results.email = 'failed';
         console.error(`✗ Trainer cancellation email failed:`, err.message);
+      }
+      // WhatsApp to trainer
+      if (trainerPhone && isWhatsAppAvailable()) {
+        try {
+          await sendTrainerCancellationWhatsApp(trainerPhone, name, oldDateTime, email, phone);
+          results.whatsapp = 'sent';
+          console.log(`✓ Trainer Cancellation WHATSAPP sent to ${trainerPhone}`);
+        } catch (err) {
+          results.whatsapp = 'failed';
+          console.error(`✗ Trainer cancellation WhatsApp failed:`, err.message);
+        }
       }
       break;
   }

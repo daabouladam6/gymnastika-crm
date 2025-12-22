@@ -7,6 +7,7 @@ const {
   sendReminderWhatsApp,
   isWhatsAppAvailable 
 } = require('./whatsapp');
+const { getTrainerPhone } = require('../config/trainers');
 
 /**
  * Check for PT customers with PT dates today and send reminders
@@ -77,7 +78,15 @@ function checkPTReminders() {
         }
         
         // WhatsApp reminder to trainer (if trainer phone is configured)
-        // Note: Would need to add trainer phone to the trainers config
+        const trainerPhone = getTrainerPhone(customer.trainer_email);
+        if (trainerPhone && whatsappEnabled) {
+          try {
+            await sendTrainerReminderWhatsApp(trainerPhone, customer.name, customer.pt_date, customer.email, customer.phone, customer.pt_time);
+            console.log(`    ✓ WhatsApp sent to trainer (${trainerPhone})`);
+          } catch (err) {
+            console.error(`    ✗ Trainer WhatsApp failed: ${err.message}`);
+          }
+        }
       }
     }
   });
