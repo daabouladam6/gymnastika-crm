@@ -208,6 +208,28 @@ function Home() {
     router.push('/login');
   };
 
+  const handleBackup = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/backup`, { 
+        headers: getAuthHeaders(),
+        responseType: 'blob'
+      });
+      
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `crm-backup-${new Date().toISOString().split('T')[0]}.json`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Backup error:', error);
+      alert('Failed to create backup. Please try again.');
+    }
+  };
+
   const handleReminderUpdate = () => {
     fetchPendingReminders();
     fetchCompletedReminders();
@@ -277,9 +299,14 @@ function Home() {
           </div>
           <div style={{ textAlign: 'right' }}>
             <p style={{ marginBottom: '5px' }}>Welcome, {user?.full_name || user?.username}</p>
-            <button onClick={handleLogout} className="btn btn-secondary btn-sm">
-              Logout
-            </button>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button onClick={handleBackup} className="btn btn-primary btn-sm" title="Download backup of all data">
+                📥 Backup
+              </button>
+              <button onClick={handleLogout} className="btn btn-secondary btn-sm">
+                Logout
+              </button>
+            </div>
           </div>
         </div>
       </header>
