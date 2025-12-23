@@ -346,7 +346,7 @@ router.post('/', async (req, res) => {
   const { 
     name, phone, email, child_name, referral_source, notes, wants_pt, 
     customer_type, pt_date, pt_time, trainer_email,
-    is_recurring, recurrence_type, recurrence_interval, recurrence_end_date 
+    is_recurring, recurrence_type, recurrence_interval, recurrence_end_date, pt_days 
   } = req.body;
   
   // Validate required fields
@@ -373,11 +373,12 @@ router.post('/', async (req, res) => {
   }
   
   db.run(
-    'INSERT INTO customers (name, phone, email, child_name, referral_source, notes, wants_pt, customer_type, pt_date, pt_time, trainer_email, is_recurring, recurrence_type, recurrence_interval, recurrence_end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO customers (name, phone, email, child_name, referral_source, notes, wants_pt, customer_type, pt_date, pt_time, trainer_email, is_recurring, recurrence_type, recurrence_interval, recurrence_end_date, pt_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     [
       name, phone, email || null, child_name || null, referral_source || null, notes || null, 
       wants_pt ? 1 : 0, customer_type || 'basic', pt_date || null, pt_time || null, trainer_email || null,
-      is_recurring ? 1 : 0, recurrence_type || null, recurrence_interval || null, recurrence_end_date || null
+      is_recurring ? 1 : 0, recurrence_type || null, recurrence_interval || null, recurrence_end_date || null,
+      pt_days || null
     ],
     async function(err) {
       if (err) {
@@ -390,7 +391,8 @@ router.post('/', async (req, res) => {
       console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
       console.log(`📝 New Customer Created: ${name}`);
       if (is_recurring) {
-        console.log(`   🔄 Recurring: ${recurrence_type}${recurrence_type === 'custom' ? ` (every ${recurrence_interval} days)` : ''}`);
+        const daysInfo = pt_days ? ` on days ${pt_days}` : '';
+        console.log(`   🔄 Recurring: ${recurrence_type}${recurrence_type === 'custom' ? ` (every ${recurrence_interval} days)` : ''}${daysInfo}`);
       }
       console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
       
@@ -428,7 +430,7 @@ router.put('/:id', (req, res) => {
   const { 
     name, phone, email, child_name, referral_source, notes, wants_pt, 
     customer_type, pt_date, pt_time, trainer_email,
-    is_recurring, recurrence_type, recurrence_interval, recurrence_end_date 
+    is_recurring, recurrence_type, recurrence_interval, recurrence_end_date, pt_days 
   } = req.body;
   
   // Validate required fields
@@ -464,12 +466,12 @@ router.put('/:id', (req, res) => {
     
     // Perform the update
     db.run(
-      'UPDATE customers SET name = ?, phone = ?, email = ?, child_name = ?, referral_source = ?, notes = ?, wants_pt = ?, customer_type = ?, pt_date = ?, pt_time = ?, trainer_email = ?, is_recurring = ?, recurrence_type = ?, recurrence_interval = ?, recurrence_end_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      'UPDATE customers SET name = ?, phone = ?, email = ?, child_name = ?, referral_source = ?, notes = ?, wants_pt = ?, customer_type = ?, pt_date = ?, pt_time = ?, trainer_email = ?, is_recurring = ?, recurrence_type = ?, recurrence_interval = ?, recurrence_end_date = ?, pt_days = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
       [
         name, phone, email || null, child_name || null, referral_source || null, notes || null, 
         wants_pt ? 1 : 0, customer_type || 'basic', pt_date || null, pt_time || null, trainer_email || null,
         is_recurring ? 1 : 0, recurrence_type || null, recurrence_interval || null, recurrence_end_date || null,
-        req.params.id
+        pt_days || null, req.params.id
       ],
       async function(updateErr) {
         if (updateErr) {

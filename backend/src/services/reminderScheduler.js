@@ -16,9 +16,10 @@ const { getTrainerPhone } = require('../config/trainers');
  * @param {string} currentDate - Current PT date (YYYY-MM-DD)
  * @param {string} recurrenceType - 'daily', 'weekly', or 'custom'
  * @param {number} interval - Custom interval in days (only for 'custom' type)
+ * @param {string} ptDays - Comma-separated day numbers for weekly (e.g., "2,4" for Tue, Thu)
  * @returns {string} - Next session date (YYYY-MM-DD)
  */
-function calculateNextSessionDate(currentDate, recurrenceType, interval = null) {
+function calculateNextSessionDate(currentDate, recurrenceType, interval = null, ptDays = null) {
   const date = new Date(currentDate);
   
   switch (recurrenceType) {
@@ -26,7 +27,28 @@ function calculateNextSessionDate(currentDate, recurrenceType, interval = null) 
       date.setDate(date.getDate() + 1);
       break;
     case 'weekly':
-      date.setDate(date.getDate() + 7);
+      // If we have specific days of the week, find the next matching day
+      if (ptDays) {
+        const days = ptDays.split(',').map(d => parseInt(d.trim())).sort((a, b) => a - b);
+        const currentDayOfWeek = date.getDay();
+        
+        // Find the next day in the list after the current day
+        let nextDay = days.find(d => d > currentDayOfWeek);
+        
+        if (nextDay !== undefined) {
+          // Found a day later this week
+          const daysToAdd = nextDay - currentDayOfWeek;
+          date.setDate(date.getDate() + daysToAdd);
+        } else {
+          // No more days this week, go to first day next week
+          const firstDayNextWeek = days[0];
+          const daysToAdd = 7 - currentDayOfWeek + firstDayNextWeek;
+          date.setDate(date.getDate() + daysToAdd);
+        }
+      } else {
+        // No specific days, just add 7 days
+        date.setDate(date.getDate() + 7);
+      }
       break;
     case 'custom':
       date.setDate(date.getDate() + (interval || 7));
@@ -36,6 +58,15 @@ function calculateNextSessionDate(currentDate, recurrenceType, interval = null) 
   }
   
   return date.toISOString().split('T')[0];
+}
+
+/**
+ * Get day names from pt_days string
+ */
+function getDayNames(ptDays) {
+  if (!ptDays) return '';
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  return ptDays.split(',').map(d => dayNames[parseInt(d.trim())]).join(', ');
 }
 
 /**
@@ -59,7 +90,7 @@ function processRecurringSessions() {
   // Find recurring PT sessions where the pt_date is in the past (yesterday or earlier)
   const query = `
     SELECT id, name, email, phone, pt_date, pt_time, trainer_email, 
-           is_recurring, recurrence_type, recurrence_interval, recurrence_end_date
+           is_recurring, recurrence_type, recurrence_interval, recurrence_end_date, pt_days
     FROM customers 
     WHERE customer_type = 'pt' 
       AND is_recurring = 1
@@ -85,8 +116,14 @@ function processRecurringSessions() {
       const nextDate = calculateNextSessionDate(
         customer.pt_date, 
         customer.recurrence_type, 
-        customer.recurrence_interval
+        customer.recurrence_interval,
+        customer.pt_days
       );
+      
+      // Log the days info if available
+      if (customer.pt_days) {
+        console.log(`  📅 ${customer.name}: Session days - ${getDayNames(customer.pt_days)}`);
+      }
       
       // Check if we should continue the recurrence
       if (!shouldContinueRecurrence(nextDate, customer.recurrence_end_date)) {
