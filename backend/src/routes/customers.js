@@ -346,7 +346,7 @@ router.post('/', async (req, res) => {
   const { 
     name, phone, email, child_name, referral_source, notes, wants_pt, 
     customer_type, pt_date, pt_time, trainer_email,
-    is_recurring, recurrence_type, recurrence_interval, recurrence_end_date, pt_days 
+    is_recurring, pt_days 
   } = req.body;
   
   // Validate required fields
@@ -365,20 +365,21 @@ router.post('/', async (req, res) => {
   }
 
   // Validate recurring session options
-  if (is_recurring && !recurrence_type) {
-    return res.status(400).json({ error: 'Recurrence type is required for recurring sessions' });
-  }
-  if (recurrence_type === 'custom' && (!recurrence_interval || recurrence_interval < 1)) {
-    return res.status(400).json({ error: 'Valid interval is required for custom recurrence' });
+  if (is_recurring) {
+    if (!pt_days) {
+      return res.status(400).json({ error: 'Please select at least one day for recurring sessions' });
+    }
+    if (!pt_time) {
+      return res.status(400).json({ error: 'Session time is required for recurring sessions' });
+    }
   }
   
   db.run(
-    'INSERT INTO customers (name, phone, email, child_name, referral_source, notes, wants_pt, customer_type, pt_date, pt_time, trainer_email, is_recurring, recurrence_type, recurrence_interval, recurrence_end_date, pt_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO customers (name, phone, email, child_name, referral_source, notes, wants_pt, customer_type, pt_date, pt_time, trainer_email, is_recurring, pt_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     [
       name, phone, email || null, child_name || null, referral_source || null, notes || null, 
       wants_pt ? 1 : 0, customer_type || 'basic', pt_date || null, pt_time || null, trainer_email || null,
-      is_recurring ? 1 : 0, recurrence_type || null, recurrence_interval || null, recurrence_end_date || null,
-      pt_days || null
+      is_recurring ? 1 : 0, pt_days || null
     ],
     async function(err) {
       if (err) {
@@ -390,9 +391,11 @@ router.post('/', async (req, res) => {
       
       console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
       console.log(`📝 New Customer Created: ${name}`);
-      if (is_recurring) {
-        const daysInfo = pt_days ? ` on days ${pt_days}` : '';
-        console.log(`   🔄 Recurring: ${recurrence_type}${recurrence_type === 'custom' ? ` (every ${recurrence_interval} days)` : ''}${daysInfo}`);
+      if (is_recurring && pt_days) {
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const days = pt_days.split(',').map(d => dayNames[parseInt(d.trim())]).join(', ');
+        console.log(`   🔄 Weekly recurring on: ${days} at ${pt_time}`);
+        console.log(`   📅 Reminders will be sent 7 hours before each session`);
       }
       console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
       
@@ -404,8 +407,8 @@ router.post('/', async (req, res) => {
         // Send confirmation to trainer
         await notifyTrainer('pt_confirmation', trainer_email, customer, { ptDate: pt_date, ptTime: pt_time });
         
-        // If PT date is TODAY, also send reminder
-        if (isToday(pt_date)) {
+        // If PT date is TODAY and not recurring, also send reminder
+        if (isToday(pt_date) && !is_recurring) {
           setTimeout(async () => {
             await notifyCustomer('pt_reminder', customer, { ptDate: pt_date, ptTime: pt_time, trainerEmail: trainer_email });
             await notifyTrainer('pt_reminder', trainer_email, customer, { ptDate: pt_date, ptTime: pt_time });
@@ -430,7 +433,7 @@ router.put('/:id', (req, res) => {
   const { 
     name, phone, email, child_name, referral_source, notes, wants_pt, 
     customer_type, pt_date, pt_time, trainer_email,
-    is_recurring, recurrence_type, recurrence_interval, recurrence_end_date, pt_days 
+    is_recurring, pt_days 
   } = req.body;
   
   // Validate required fields
@@ -444,8 +447,13 @@ router.put('/:id', (req, res) => {
   }
 
   // Validate recurring session options
-  if (is_recurring && !recurrence_type) {
-    return res.status(400).json({ error: 'Recurrence type is required for recurring sessions' });
+  if (is_recurring) {
+    if (!pt_days) {
+      return res.status(400).json({ error: 'Please select at least one day for recurring sessions' });
+    }
+    if (!pt_time) {
+      return res.status(400).json({ error: 'Session time is required for recurring sessions' });
+    }
   }
   
   // First, get the current customer data to check if PT date/time changed
@@ -457,21 +465,20 @@ router.put('/:id', (req, res) => {
       return res.status(404).json({ error: 'Customer not found' });
     }
     
-    // Check if PT date or time has changed
+    // Check if PT date or time has changed (only for non-recurring)
     const oldPtDate = oldCustomer.pt_date;
     const oldPtTime = oldCustomer.pt_time;
     const newPtDate = pt_date;
     const newPtTime = pt_time;
-    const dateOrTimeChanged = customer_type === 'pt' && oldPtDate && newPtDate && (oldPtDate !== newPtDate || oldPtTime !== newPtTime);
+    const dateOrTimeChanged = customer_type === 'pt' && !is_recurring && oldPtDate && newPtDate && (oldPtDate !== newPtDate || oldPtTime !== newPtTime);
     
     // Perform the update
     db.run(
-      'UPDATE customers SET name = ?, phone = ?, email = ?, child_name = ?, referral_source = ?, notes = ?, wants_pt = ?, customer_type = ?, pt_date = ?, pt_time = ?, trainer_email = ?, is_recurring = ?, recurrence_type = ?, recurrence_interval = ?, recurrence_end_date = ?, pt_days = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      'UPDATE customers SET name = ?, phone = ?, email = ?, child_name = ?, referral_source = ?, notes = ?, wants_pt = ?, customer_type = ?, pt_date = ?, pt_time = ?, trainer_email = ?, is_recurring = ?, pt_days = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
       [
         name, phone, email || null, child_name || null, referral_source || null, notes || null, 
         wants_pt ? 1 : 0, customer_type || 'basic', pt_date || null, pt_time || null, trainer_email || null,
-        is_recurring ? 1 : 0, recurrence_type || null, recurrence_interval || null, recurrence_end_date || null,
-        pt_days || null, req.params.id
+        is_recurring ? 1 : 0, pt_days || null, req.params.id
       ],
       async function(updateErr) {
         if (updateErr) {
@@ -481,7 +488,7 @@ router.put('/:id', (req, res) => {
           return res.status(404).json({ error: 'Customer not found' });
         }
         
-        // If PT date or time changed, send notification
+        // If PT date or time changed (for non-recurring), send notification
         if (dateOrTimeChanged) {
           console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
           console.log(`📅 PT Session Rescheduled: ${name}`);

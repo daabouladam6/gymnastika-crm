@@ -28,9 +28,6 @@ export default function PTCustomerForm({ onAdd }) {
     notes: '',
     trainer_email: '',
     is_recurring: false,
-    recurrence_type: 'weekly',
-    recurrence_interval: 7,
-    recurrence_end_date: '',
     pt_days: [] // Array of day numbers (0-6)
   });
   const [loading, setLoading] = useState(false);
@@ -54,7 +51,7 @@ export default function PTCustomerForm({ onAdd }) {
     setSuccess(false);
 
     if (!formData.pt_date) {
-      setError('PT start date is required');
+      setError('PT date is required');
       setLoading(false);
       return;
     }
@@ -65,11 +62,18 @@ export default function PTCustomerForm({ onAdd }) {
       return;
     }
 
-    // Validate recurring sessions need at least one day selected
-    if (formData.is_recurring && formData.recurrence_type === 'weekly' && (!formData.pt_days || formData.pt_days.length === 0)) {
-      setError('Please select at least one day of the week for recurring sessions');
-      setLoading(false);
-      return;
+    // Validate recurring sessions need at least one day selected and time
+    if (formData.is_recurring) {
+      if (!formData.pt_days || formData.pt_days.length === 0) {
+        setError('Please select at least one day for recurring sessions');
+        setLoading(false);
+        return;
+      }
+      if (!formData.pt_time) {
+        setError('Session time is required for recurring sessions (reminders are sent 7 hours before)');
+        setLoading(false);
+        return;
+      }
     }
 
     try {
@@ -78,10 +82,7 @@ export default function PTCustomerForm({ onAdd }) {
         customer_type: 'pt',
         wants_pt: 1,
         is_recurring: formData.is_recurring,
-        recurrence_type: formData.is_recurring ? formData.recurrence_type : null,
-        recurrence_interval: formData.is_recurring && formData.recurrence_type === 'custom' ? formData.recurrence_interval : null,
-        recurrence_end_date: formData.is_recurring && formData.recurrence_end_date ? formData.recurrence_end_date : null,
-        pt_days: formData.is_recurring && formData.recurrence_type === 'weekly' ? formData.pt_days.join(',') : null
+        pt_days: formData.is_recurring ? formData.pt_days.join(',') : null
       };
       await axios.post(
         `${API_URL}/customers`, 
@@ -91,8 +92,7 @@ export default function PTCustomerForm({ onAdd }) {
       setFormData({ 
         name: '', phone: '', email: '', child_name: '', 
         referral_source: '', pt_date: '', pt_time: '', notes: '', trainer_email: '',
-        is_recurring: false, recurrence_type: 'weekly', recurrence_interval: 7, recurrence_end_date: '',
-        pt_days: []
+        is_recurring: false, pt_days: []
       });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -114,7 +114,7 @@ export default function PTCustomerForm({ onAdd }) {
   // Get selected days display text
   const getSelectedDaysText = () => {
     if (!formData.pt_days || formData.pt_days.length === 0) return 'No days selected';
-    return formData.pt_days.map(d => DAYS_OF_WEEK.find(day => day.value === d)?.label).join(', ');
+    return formData.pt_days.map(d => DAYS_OF_WEEK.find(day => day.value === d)?.fullLabel).join(', ');
   };
 
   return (
@@ -194,9 +194,7 @@ export default function PTCustomerForm({ onAdd }) {
 
       <div className="form-row">
         <div className="form-group">
-          <label htmlFor="pt_date">
-            {formData.is_recurring ? 'Start Date *' : 'PT Date *'}
-          </label>
+          <label htmlFor="pt_date">PT Date *</label>
           <input
             id="pt_date"
             type="date"
@@ -208,20 +206,23 @@ export default function PTCustomerForm({ onAdd }) {
           />
         </div>
         <div className="form-group">
-          <label htmlFor="pt_time">PT Time</label>
+          <label htmlFor="pt_time">
+            Session Time {formData.is_recurring ? '*' : ''}
+          </label>
           <input
             id="pt_time"
             type="time"
             value={formData.pt_time}
             onChange={(e) => setFormData({ ...formData, pt_time: e.target.value })}
             disabled={loading}
+            required={formData.is_recurring}
           />
         </div>
       </div>
       <small className="form-hint" style={{ marginTop: '-10px', marginBottom: '15px', display: 'block' }}>
         {formData.is_recurring 
-          ? 'First session date. Recurring sessions will follow from this date.' 
-          : 'Reminder emails will be sent on this date with the specified time'}
+          ? 'First session date. Reminders sent 7 hours before each session.' 
+          : 'Confirmation and reminder emails will be sent'}
       </small>
 
       {/* Recurring Session Options */}
@@ -241,94 +242,50 @@ export default function PTCustomerForm({ onAdd }) {
             style={{ marginRight: '10px', width: '18px', height: '18px' }}
           />
           <span style={{ fontWeight: '600', fontSize: '15px' }}>
-            🔄 Recurring Session
+            🔄 Weekly Recurring Session
           </span>
         </label>
         
         {formData.is_recurring && (
           <>
-            <div className="form-group" style={{ marginBottom: '12px' }}>
-              <label htmlFor="recurrence_type">Repeat Type</label>
-              <select
-                id="recurrence_type"
-                value={formData.recurrence_type}
-                onChange={(e) => setFormData({ ...formData, recurrence_type: e.target.value })}
-                disabled={loading}
-                style={{ width: '100%' }}
-              >
-                <option value="weekly">Weekly (Select Days)</option>
-                <option value="daily">Daily</option>
-                <option value="custom">Custom Interval (days)</option>
-              </select>
-            </div>
-
-            {/* Day Selection for Weekly */}
-            {formData.recurrence_type === 'weekly' && (
-              <div className="form-group" style={{ marginBottom: '12px' }}>
-                <label>Session Days *</label>
-                <div style={{ 
-                  display: 'flex', 
-                  gap: '6px', 
-                  flexWrap: 'wrap',
-                  marginTop: '8px'
-                }}>
-                  {DAYS_OF_WEEK.map((day) => (
-                    <button
-                      key={day.value}
-                      type="button"
-                      onClick={() => toggleDay(day.value)}
-                      disabled={loading}
-                      style={{
-                        padding: '10px 14px',
-                        borderRadius: '6px',
-                        border: formData.pt_days?.includes(day.value) ? '2px solid #3b82f6' : '1px solid #ccc',
-                        backgroundColor: formData.pt_days?.includes(day.value) ? '#3b82f6' : '#fff',
-                        color: formData.pt_days?.includes(day.value) ? '#fff' : '#333',
-                        cursor: 'pointer',
-                        fontWeight: formData.pt_days?.includes(day.value) ? '600' : '400',
-                        transition: 'all 0.2s ease',
-                        minWidth: '50px'
-                      }}
-                      title={day.fullLabel}
-                    >
-                      {day.label}
-                    </button>
-                  ))}
-                </div>
-                <small className="form-hint" style={{ marginTop: '8px', display: 'block' }}>
-                  Selected: {getSelectedDaysText()}
-                </small>
-              </div>
-            )}
-            
-            {formData.recurrence_type === 'custom' && (
-              <div className="form-group" style={{ marginBottom: '12px' }}>
-                <label htmlFor="recurrence_interval">Repeat Every (days)</label>
-                <input
-                  id="recurrence_interval"
-                  type="number"
-                  min="1"
-                  max="365"
-                  value={formData.recurrence_interval}
-                  onChange={(e) => setFormData({ ...formData, recurrence_interval: parseInt(e.target.value) || 7 })}
-                  disabled={loading}
-                  style={{ width: '100%' }}
-                />
-              </div>
-            )}
+            <p style={{ fontSize: '13px', color: '#666', marginBottom: '12px', marginTop: '0' }}>
+              📅 Select the days when sessions happen. Reminders will be sent to both the customer and trainer 7 hours before each session.
+            </p>
             
             <div className="form-group" style={{ marginBottom: '0' }}>
-              <label htmlFor="recurrence_end_date">End Date (Optional)</label>
-              <input
-                id="recurrence_end_date"
-                type="date"
-                value={formData.recurrence_end_date}
-                onChange={(e) => setFormData({ ...formData, recurrence_end_date: e.target.value })}
-                min={formData.pt_date || today}
-                disabled={loading}
-                style={{ width: '100%' }}
-              />
-              <small className="form-hint">Leave empty for ongoing recurring sessions</small>
+              <label>Session Days *</label>
+              <div style={{ 
+                display: 'flex', 
+                gap: '6px', 
+                flexWrap: 'wrap',
+                marginTop: '8px'
+              }}>
+                {DAYS_OF_WEEK.map((day) => (
+                  <button
+                    key={day.value}
+                    type="button"
+                    onClick={() => toggleDay(day.value)}
+                    disabled={loading}
+                    style={{
+                      padding: '10px 14px',
+                      borderRadius: '6px',
+                      border: formData.pt_days?.includes(day.value) ? '2px solid #3b82f6' : '1px solid #ccc',
+                      backgroundColor: formData.pt_days?.includes(day.value) ? '#3b82f6' : '#fff',
+                      color: formData.pt_days?.includes(day.value) ? '#fff' : '#333',
+                      cursor: 'pointer',
+                      fontWeight: formData.pt_days?.includes(day.value) ? '600' : '400',
+                      transition: 'all 0.2s ease',
+                      minWidth: '50px'
+                    }}
+                    title={day.fullLabel}
+                  >
+                    {day.label}
+                  </button>
+                ))}
+              </div>
+              <small className="form-hint" style={{ marginTop: '8px', display: 'block' }}>
+                Selected: {getSelectedDaysText()}
+              </small>
             </div>
           </>
         )}

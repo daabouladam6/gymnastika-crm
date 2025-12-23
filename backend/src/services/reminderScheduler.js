@@ -1,64 +1,13 @@
 const cron = require('node-cron');
 const db = require('../../database/db');
-const { sendPTReminderEmail, sendReminderEmail, sendTrainerReminderEmail, sendPTConfirmationEmail, sendTrainerConfirmationEmail } = require('./email');
+const { sendPTReminderEmail, sendReminderEmail, sendTrainerReminderEmail } = require('./email');
 const { 
   sendPTReminderWhatsApp, 
   sendTrainerReminderWhatsApp, 
   sendReminderWhatsApp,
-  sendPTConfirmationWhatsApp,
-  sendTrainerConfirmationWhatsApp,
   isWhatsAppAvailable 
 } = require('./whatsapp');
 const { getTrainerPhone } = require('../config/trainers');
-
-/**
- * Calculate next session date based on recurrence type
- * @param {string} currentDate - Current PT date (YYYY-MM-DD)
- * @param {string} recurrenceType - 'daily', 'weekly', or 'custom'
- * @param {number} interval - Custom interval in days (only for 'custom' type)
- * @param {string} ptDays - Comma-separated day numbers for weekly (e.g., "2,4" for Tue, Thu)
- * @returns {string} - Next session date (YYYY-MM-DD)
- */
-function calculateNextSessionDate(currentDate, recurrenceType, interval = null, ptDays = null) {
-  const date = new Date(currentDate);
-  
-  switch (recurrenceType) {
-    case 'daily':
-      date.setDate(date.getDate() + 1);
-      break;
-    case 'weekly':
-      // If we have specific days of the week, find the next matching day
-      if (ptDays) {
-        const days = ptDays.split(',').map(d => parseInt(d.trim())).sort((a, b) => a - b);
-        const currentDayOfWeek = date.getDay();
-        
-        // Find the next day in the list after the current day
-        let nextDay = days.find(d => d > currentDayOfWeek);
-        
-        if (nextDay !== undefined) {
-          // Found a day later this week
-          const daysToAdd = nextDay - currentDayOfWeek;
-          date.setDate(date.getDate() + daysToAdd);
-        } else {
-          // No more days this week, go to first day next week
-          const firstDayNextWeek = days[0];
-          const daysToAdd = 7 - currentDayOfWeek + firstDayNextWeek;
-          date.setDate(date.getDate() + daysToAdd);
-        }
-      } else {
-        // No specific days, just add 7 days
-        date.setDate(date.getDate() + 7);
-      }
-      break;
-    case 'custom':
-      date.setDate(date.getDate() + (interval || 7));
-      break;
-    default:
-      date.setDate(date.getDate() + 7); // Default to weekly
-  }
-  
-  return date.toISOString().split('T')[0];
-}
 
 /**
  * Get day names from pt_days string
@@ -70,142 +19,167 @@ function getDayNames(ptDays) {
 }
 
 /**
- * Check if a recurring session should continue (hasn't reached end date)
- * @param {string} nextDate - Next calculated session date
- * @param {string} endDate - Recurrence end date (can be null for no end)
+ * Check if current day of week matches any of the pt_days
+ * @param {string} ptDays - Comma-separated day numbers (e.g., "1,3" for Mon, Wed)
  * @returns {boolean}
  */
-function shouldContinueRecurrence(nextDate, endDate) {
-  if (!endDate) return true; // No end date means it continues forever
-  return new Date(nextDate) <= new Date(endDate);
+function isTodaySessionDay(ptDays) {
+  if (!ptDays) return false;
+  const today = new Date().getDay(); // 0=Sun, 1=Mon, etc.
+  const days = ptDays.split(',').map(d => parseInt(d.trim()));
+  return days.includes(today);
 }
 
 /**
- * Process recurring sessions - update past session dates to next occurrence
- * This runs after PT reminders to auto-advance recurring sessions
+ * Check if it's time to send a reminder (7 hours before session time)
+ * @param {string} ptTime - Session time in HH:MM format
+ * @returns {boolean}
  */
-function processRecurringSessions() {
-  console.log('🔄 Processing recurring sessions...');
+function shouldSendReminder(ptTime) {
+  if (!ptTime) return false;
   
-  // Find recurring PT sessions where the pt_date is in the past (yesterday or earlier)
+  const now = new Date();
+  const [hours, minutes] = ptTime.split(':').map(Number);
+  
+  // Create session time for today
+  const sessionTime = new Date();
+  sessionTime.setHours(hours, minutes, 0, 0);
+  
+  // Calculate 7 hours before session
+  const reminderTime = new Date(sessionTime);
+  reminderTime.setHours(reminderTime.getHours() - 7);
+  
+  // Check if we're within the reminder window (between 7h before and session time)
+  // We'll send reminders if current time is within 30 minutes of the 7-hour-before mark
+  const timeDiff = now.getTime() - reminderTime.getTime();
+  const thirtyMinutes = 30 * 60 * 1000;
+  
+  return timeDiff >= 0 && timeDiff <= thirtyMinutes;
+}
+
+/**
+ * Get today's date in YYYY-MM-DD format
+ */
+function getTodayDate() {
+  return new Date().toISOString().split('T')[0];
+}
+
+/**
+ * Check for recurring PT sessions and send reminders 7 hours before
+ * Sends to both customer AND trainer via email AND WhatsApp
+ */
+function checkRecurringReminders() {
+  console.log('🔄 Checking recurring PT session reminders...');
+  
+  // Find all recurring PT customers
   const query = `
-    SELECT id, name, email, phone, pt_date, pt_time, trainer_email, 
-           is_recurring, recurrence_type, recurrence_interval, recurrence_end_date, pt_days
+    SELECT id, name, email, phone, pt_date, pt_time, trainer_email, pt_days, child_name
     FROM customers 
     WHERE customer_type = 'pt' 
       AND is_recurring = 1
-      AND pt_date < date('now')
+      AND pt_days IS NOT NULL
+      AND pt_time IS NOT NULL
       AND (archived = 0 OR archived IS NULL)
   `;
   
   db.all(query, async (err, rows) => {
     if (err) {
-      console.error('Error checking recurring sessions:', err);
+      console.error('Error checking recurring reminders:', err);
       return;
     }
     
     if (rows.length === 0) {
-      console.log('  No recurring sessions to update.');
+      console.log('  No recurring PT sessions configured.');
       return;
     }
     
-    console.log(`  Found ${rows.length} recurring session(s) to process.`);
     const whatsappEnabled = isWhatsAppAvailable();
+    const today = getTodayDate();
+    let remindersSent = 0;
+    
+    console.log(`  Found ${rows.length} recurring PT customer(s).`);
+    console.log(`  WhatsApp: ${whatsappEnabled ? '✅ Available' : '⚠️ Not configured'}`);
     
     for (const customer of rows) {
-      const nextDate = calculateNextSessionDate(
-        customer.pt_date, 
-        customer.recurrence_type, 
-        customer.recurrence_interval,
-        customer.pt_days
-      );
-      
-      // Log the days info if available
-      if (customer.pt_days) {
-        console.log(`  📅 ${customer.name}: Session days - ${getDayNames(customer.pt_days)}`);
-      }
-      
-      // Check if we should continue the recurrence
-      if (!shouldContinueRecurrence(nextDate, customer.recurrence_end_date)) {
-        console.log(`\n  ⏹️ ${customer.name}: Recurring session ended (reached end date)`);
-        // Stop the recurrence by setting is_recurring to 0
-        db.run('UPDATE customers SET is_recurring = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [customer.id]);
+      // Check if today is one of the session days
+      if (!isTodaySessionDay(customer.pt_days)) {
         continue;
       }
       
-      console.log(`\n  🔄 ${customer.name}: Advancing to next session ${nextDate}`);
+      // Check if it's time to send the reminder (7 hours before)
+      if (!shouldSendReminder(customer.pt_time)) {
+        continue;
+      }
       
-      // Update the pt_date to the next occurrence
-      db.run(
-        'UPDATE customers SET pt_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-        [nextDate, customer.id],
-        async function(updateErr) {
-          if (updateErr) {
-            console.error(`    ✗ Failed to update: ${updateErr.message}`);
-            return;
-          }
-          
-          console.log(`    ✓ Updated to ${nextDate}`);
-          
-          // Send confirmation for the next session
-          const customerData = { name: customer.name, email: customer.email, phone: customer.phone };
-          
-          // Send confirmation to customer about next session
-          if (customer.email) {
-            try {
-              await sendPTConfirmationEmail(customer.email, customer.name, nextDate, customer.trainer_email, customer.pt_time);
-              console.log(`    ✓ Next session email sent to customer`);
-            } catch (err) {
-              console.error(`    ✗ Customer email failed: ${err.message}`);
-            }
-          }
-          
-          if (customer.phone && whatsappEnabled) {
-            try {
-              await sendPTConfirmationWhatsApp(customer.phone, customer.name, nextDate, customer.trainer_email, customer.pt_time);
-              console.log(`    ✓ Next session WhatsApp sent to customer`);
-            } catch (err) {
-              console.error(`    ✗ Customer WhatsApp failed: ${err.message}`);
-            }
-          }
-          
-          // Send confirmation to trainer about next session
-          if (customer.trainer_email) {
-            try {
-              await sendTrainerConfirmationEmail(customer.trainer_email, customer.name, nextDate, customer.email, customer.phone, customer.pt_time);
-              console.log(`    ✓ Next session email sent to trainer`);
-            } catch (err) {
-              console.error(`    ✗ Trainer email failed: ${err.message}`);
-            }
-            
-            const trainerPhone = getTrainerPhone(customer.trainer_email);
-            if (trainerPhone && whatsappEnabled) {
-              try {
-                await sendTrainerConfirmationWhatsApp(trainerPhone, customer.name, nextDate, customer.email, customer.phone, customer.pt_time);
-                console.log(`    ✓ Next session WhatsApp sent to trainer`);
-              } catch (err) {
-                console.error(`    ✗ Trainer WhatsApp failed: ${err.message}`);
-              }
-            }
+      remindersSent++;
+      const dayNames = getDayNames(customer.pt_days);
+      console.log(`\n  📧 Recurring reminder: ${customer.name}`);
+      console.log(`     Session days: ${dayNames} at ${customer.pt_time}`);
+      
+      // ====== SEND TO CUSTOMER ======
+      if (customer.email) {
+        try {
+          await sendPTReminderEmail(customer.email, customer.name, today, customer.trainer_email, customer.pt_time);
+          console.log(`    ✓ Email sent to ${customer.email}`);
+        } catch (err) {
+          console.error(`    ✗ Email failed: ${err.message}`);
+        }
+      }
+      
+      if (customer.phone && whatsappEnabled) {
+        try {
+          await sendPTReminderWhatsApp(customer.phone, customer.name, today, customer.trainer_email, customer.pt_time);
+          console.log(`    ✓ WhatsApp sent to ${customer.phone}`);
+        } catch (err) {
+          console.error(`    ✗ WhatsApp failed: ${err.message}`);
+        }
+      }
+      
+      // ====== SEND TO TRAINER ======
+      if (customer.trainer_email) {
+        console.log(`  📧 Trainer: ${customer.trainer_email}`);
+        
+        try {
+          await sendTrainerReminderEmail(customer.trainer_email, customer.name, today, customer.email, customer.phone, customer.pt_time, customer.child_name);
+          console.log(`    ✓ Email sent to trainer`);
+        } catch (err) {
+          console.error(`    ✗ Email failed: ${err.message}`);
+        }
+        
+        const trainerPhone = getTrainerPhone(customer.trainer_email);
+        if (trainerPhone && whatsappEnabled) {
+          try {
+            await sendTrainerReminderWhatsApp(trainerPhone, customer.name, today, customer.email, customer.phone, customer.pt_time);
+            console.log(`    ✓ WhatsApp sent to trainer (${trainerPhone})`);
+          } catch (err) {
+            console.error(`    ✗ Trainer WhatsApp failed: ${err.message}`);
           }
         }
-      );
+      }
+    }
+    
+    if (remindersSent === 0) {
+      console.log('  No recurring reminders to send at this time.');
+    } else {
+      console.log(`\n  ✅ Sent ${remindersSent} recurring reminder(s).`);
     }
   });
 }
 
 /**
- * Check for PT customers with PT dates today and send reminders
+ * Check for one-time PT customers with PT dates today and send reminders
  * Sends to both customer AND trainer via email AND WhatsApp
  */
 function checkPTReminders() {
-  console.log('🔔 Checking for PT reminders...');
+  console.log('🔔 Checking for one-time PT reminders...');
   
+  // Only check non-recurring PT sessions with today's date
   const query = `
-    SELECT id, name, email, phone, pt_date, pt_time, trainer_email, is_recurring, recurrence_type
+    SELECT id, name, email, phone, pt_date, pt_time, trainer_email, child_name
     FROM customers 
     WHERE customer_type = 'pt' 
       AND pt_date = date('now')
+      AND (is_recurring = 0 OR is_recurring IS NULL)
       AND (archived = 0 OR archived IS NULL)
   `;
   
@@ -216,20 +190,19 @@ function checkPTReminders() {
     }
     
     if (rows.length === 0) {
-      console.log('  No PT sessions scheduled for today.');
+      console.log('  No one-time PT sessions scheduled for today.');
       return;
     }
     
     const whatsappEnabled = isWhatsAppAvailable();
-    console.log(`  Found ${rows.length} PT session(s) today.`);
+    console.log(`  Found ${rows.length} one-time PT session(s) today.`);
     console.log(`  WhatsApp: ${whatsappEnabled ? '✅ Available' : '⚠️ Not configured'}`);
     
     for (const customer of rows) {
       const timeStr = customer.pt_time ? ` at ${customer.pt_time}` : '';
-      const recurringStr = customer.is_recurring ? ' 🔄' : '';
       
       // ====== SEND TO CUSTOMER ======
-      console.log(`\n  📧 Customer: ${customer.name}${timeStr}${recurringStr}`);
+      console.log(`\n  📧 Customer: ${customer.name}${timeStr}`);
       
       // Email reminder to customer
       if (customer.email) {
@@ -257,7 +230,7 @@ function checkPTReminders() {
         
         // Email reminder to trainer
         try {
-          await sendTrainerReminderEmail(customer.trainer_email, customer.name, customer.pt_date, customer.email, customer.phone, customer.pt_time);
+          await sendTrainerReminderEmail(customer.trainer_email, customer.name, customer.pt_date, customer.email, customer.phone, customer.pt_time, customer.child_name);
           console.log(`    ✓ Email sent to trainer`);
         } catch (err) {
           console.error(`    ✗ Email failed: ${err.message}`);
@@ -353,13 +326,24 @@ function checkDueReminders() {
 
 /**
  * Start the reminder scheduler
- * Runs daily at 8 AM (PT reminders), 9 AM (general reminders), and 10 PM (recurring session advancement)
+ * - Recurring reminders: Every 30 minutes (to catch 7-hour-before window)
+ * - One-time PT reminders: Daily at 8 AM
+ * - General reminders: Daily at 9 AM
  */
 function startReminderScheduler() {
-  // Schedule PT reminder check daily at 8 AM
+  // Check recurring reminders every 30 minutes
+  // This ensures we catch the 7-hour-before window for any session time
+  cron.schedule('*/30 * * * *', () => {
+    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`⏰ Recurring Reminder Check (${new Date().toLocaleTimeString()})`);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    checkRecurringReminders();
+  });
+  
+  // Schedule one-time PT reminder check daily at 8 AM
   cron.schedule('0 8 * * *', () => {
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('⏰ Scheduled PT Reminder Check (8:00 AM)');
+    console.log('⏰ One-time PT Reminder Check (8:00 AM)');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     checkPTReminders();
   });
@@ -372,34 +356,18 @@ function startReminderScheduler() {
     checkDueReminders();
   });
   
-  // Schedule recurring session advancement daily at 10 PM (after the day's sessions)
-  cron.schedule('0 22 * * *', () => {
-    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('⏰ Processing Recurring Sessions (10:00 PM)');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    processRecurringSessions();
-  });
-  
-  // Also run at 1 AM to catch any missed sessions from the previous day
-  cron.schedule('0 1 * * *', () => {
-    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('⏰ Recurring Sessions Catch-up (1:00 AM)');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    processRecurringSessions();
-  });
-  
-  // Run immediately on startup to check for overdue reminders, today's PT sessions, and advance recurring sessions
+  // Run immediately on startup
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('🚀 Startup Reminder Check');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   checkDueReminders();
   checkPTReminders();
-  processRecurringSessions();
+  checkRecurringReminders();
   
   console.log('\n✅ Reminder scheduler started.');
-  console.log('  📅 PT reminders: Daily at 8:00 AM');
+  console.log('  🔄 Recurring reminders: Every 30 minutes (7 hours before session)');
+  console.log('  📅 One-time PT reminders: Daily at 8:00 AM');
   console.log('  📅 General reminders: Daily at 9:00 AM');
-  console.log('  🔄 Recurring session advancement: Daily at 10:00 PM & 1:00 AM');
 }
 
-module.exports = { startReminderScheduler, checkDueReminders, checkPTReminders, processRecurringSessions };
+module.exports = { startReminderScheduler, checkDueReminders, checkPTReminders, checkRecurringReminders };
