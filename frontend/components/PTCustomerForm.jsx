@@ -15,7 +15,11 @@ export default function PTCustomerForm({ onAdd }) {
     pt_date: '',
     pt_time: '',
     notes: '',
-    trainer_email: ''
+    trainer_email: '',
+    is_recurring: false,
+    recurrence_type: 'weekly',
+    recurrence_interval: 7,
+    recurrence_end_date: ''
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -40,14 +44,24 @@ export default function PTCustomerForm({ onAdd }) {
     }
 
     try {
+      const submitData = {
+        ...formData,
+        customer_type: 'pt',
+        wants_pt: 1,
+        is_recurring: formData.is_recurring,
+        recurrence_type: formData.is_recurring ? formData.recurrence_type : null,
+        recurrence_interval: formData.is_recurring && formData.recurrence_type === 'custom' ? formData.recurrence_interval : null,
+        recurrence_end_date: formData.is_recurring && formData.recurrence_end_date ? formData.recurrence_end_date : null
+      };
       await axios.post(
         `${API_URL}/customers`, 
-        { ...formData, customer_type: 'pt', wants_pt: 1 },
+        submitData,
         { headers: getAuthHeaders() }
       );
       setFormData({ 
         name: '', phone: '', email: '', child_name: '', 
-        referral_source: '', pt_date: '', pt_time: '', notes: '', trainer_email: '' 
+        referral_source: '', pt_date: '', pt_time: '', notes: '', trainer_email: '',
+        is_recurring: false, recurrence_type: 'weekly', recurrence_interval: 7, recurrence_end_date: ''
       });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -166,6 +180,77 @@ export default function PTCustomerForm({ onAdd }) {
         </div>
       </div>
       <small className="form-hint" style={{ marginTop: '-10px', marginBottom: '15px', display: 'block' }}>Reminder emails will be sent on this date with the specified time</small>
+
+      {/* Recurring Session Options */}
+      <div className="form-group recurring-section" style={{ 
+        backgroundColor: formData.is_recurring ? '#f0f9ff' : '#f9f9f9', 
+        padding: '15px', 
+        borderRadius: '8px',
+        border: formData.is_recurring ? '2px solid #3b82f6' : '1px solid #e0e0e0',
+        marginBottom: '20px'
+      }}>
+        <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', marginBottom: formData.is_recurring ? '15px' : '0' }}>
+          <input
+            type="checkbox"
+            checked={formData.is_recurring}
+            onChange={(e) => setFormData({ ...formData, is_recurring: e.target.checked })}
+            disabled={loading}
+            style={{ marginRight: '10px', width: '18px', height: '18px' }}
+          />
+          <span style={{ fontWeight: '600', fontSize: '15px' }}>
+            🔄 Recurring Session
+          </span>
+        </label>
+        
+        {formData.is_recurring && (
+          <>
+            <div className="form-group" style={{ marginBottom: '12px' }}>
+              <label htmlFor="recurrence_type">Repeat</label>
+              <select
+                id="recurrence_type"
+                value={formData.recurrence_type}
+                onChange={(e) => setFormData({ ...formData, recurrence_type: e.target.value })}
+                disabled={loading}
+                style={{ width: '100%' }}
+              >
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly (Every 7 days)</option>
+                <option value="custom">Custom Interval</option>
+              </select>
+            </div>
+            
+            {formData.recurrence_type === 'custom' && (
+              <div className="form-group" style={{ marginBottom: '12px' }}>
+                <label htmlFor="recurrence_interval">Repeat Every (days)</label>
+                <input
+                  id="recurrence_interval"
+                  type="number"
+                  min="1"
+                  max="365"
+                  value={formData.recurrence_interval}
+                  onChange={(e) => setFormData({ ...formData, recurrence_interval: parseInt(e.target.value) || 7 })}
+                  disabled={loading}
+                  style={{ width: '100%' }}
+                />
+              </div>
+            )}
+            
+            <div className="form-group" style={{ marginBottom: '0' }}>
+              <label htmlFor="recurrence_end_date">End Date (Optional)</label>
+              <input
+                id="recurrence_end_date"
+                type="date"
+                value={formData.recurrence_end_date}
+                onChange={(e) => setFormData({ ...formData, recurrence_end_date: e.target.value })}
+                min={formData.pt_date || today}
+                disabled={loading}
+                style={{ width: '100%' }}
+              />
+              <small className="form-hint">Leave empty for ongoing recurring sessions</small>
+            </div>
+          </>
+        )}
+      </div>
 
       <div className="form-group">
         <label htmlFor="pt_child_name">Child's Name</label>

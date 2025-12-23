@@ -343,7 +343,11 @@ router.get('/:id', (req, res) => {
 
 // Create customer
 router.post('/', async (req, res) => {
-  const { name, phone, email, child_name, referral_source, notes, wants_pt, customer_type, pt_date, pt_time, trainer_email } = req.body;
+  const { 
+    name, phone, email, child_name, referral_source, notes, wants_pt, 
+    customer_type, pt_date, pt_time, trainer_email,
+    is_recurring, recurrence_type, recurrence_interval, recurrence_end_date 
+  } = req.body;
   
   // Validate required fields
   if (!name || !phone) {
@@ -359,10 +363,22 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Trainer selection is required for PT customers' });
     }
   }
+
+  // Validate recurring session options
+  if (is_recurring && !recurrence_type) {
+    return res.status(400).json({ error: 'Recurrence type is required for recurring sessions' });
+  }
+  if (recurrence_type === 'custom' && (!recurrence_interval || recurrence_interval < 1)) {
+    return res.status(400).json({ error: 'Valid interval is required for custom recurrence' });
+  }
   
   db.run(
-    'INSERT INTO customers (name, phone, email, child_name, referral_source, notes, wants_pt, customer_type, pt_date, pt_time, trainer_email) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [name, phone, email || null, child_name || null, referral_source || null, notes || null, wants_pt ? 1 : 0, customer_type || 'basic', pt_date || null, pt_time || null, trainer_email || null],
+    'INSERT INTO customers (name, phone, email, child_name, referral_source, notes, wants_pt, customer_type, pt_date, pt_time, trainer_email, is_recurring, recurrence_type, recurrence_interval, recurrence_end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [
+      name, phone, email || null, child_name || null, referral_source || null, notes || null, 
+      wants_pt ? 1 : 0, customer_type || 'basic', pt_date || null, pt_time || null, trainer_email || null,
+      is_recurring ? 1 : 0, recurrence_type || null, recurrence_interval || null, recurrence_end_date || null
+    ],
     async function(err) {
       if (err) {
         return res.status(500).json({ error: err.message });
@@ -373,6 +389,9 @@ router.post('/', async (req, res) => {
       
       console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
       console.log(`📝 New Customer Created: ${name}`);
+      if (is_recurring) {
+        console.log(`   🔄 Recurring: ${recurrence_type}${recurrence_type === 'custom' ? ` (every ${recurrence_interval} days)` : ''}`);
+      }
       console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
       
       // Send notifications for PT customers
@@ -397,7 +416,8 @@ router.post('/', async (req, res) => {
       
       res.status(201).json({ 
         id: customerId, 
-        message: 'Customer created successfully'
+        message: 'Customer created successfully',
+        isRecurring: is_recurring ? true : false
       });
     }
   );
@@ -405,7 +425,11 @@ router.post('/', async (req, res) => {
 
 // Update customer
 router.put('/:id', (req, res) => {
-  const { name, phone, email, child_name, referral_source, notes, wants_pt, customer_type, pt_date, pt_time, trainer_email } = req.body;
+  const { 
+    name, phone, email, child_name, referral_source, notes, wants_pt, 
+    customer_type, pt_date, pt_time, trainer_email,
+    is_recurring, recurrence_type, recurrence_interval, recurrence_end_date 
+  } = req.body;
   
   // Validate required fields
   if (!name || !phone) {
@@ -415,6 +439,11 @@ router.put('/:id', (req, res) => {
   // If PT customer, validate pt_date
   if (customer_type === 'pt' && !pt_date) {
     return res.status(400).json({ error: 'PT date is required for PT customers' });
+  }
+
+  // Validate recurring session options
+  if (is_recurring && !recurrence_type) {
+    return res.status(400).json({ error: 'Recurrence type is required for recurring sessions' });
   }
   
   // First, get the current customer data to check if PT date/time changed
@@ -435,8 +464,13 @@ router.put('/:id', (req, res) => {
     
     // Perform the update
     db.run(
-      'UPDATE customers SET name = ?, phone = ?, email = ?, child_name = ?, referral_source = ?, notes = ?, wants_pt = ?, customer_type = ?, pt_date = ?, pt_time = ?, trainer_email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [name, phone, email || null, child_name || null, referral_source || null, notes || null, wants_pt ? 1 : 0, customer_type || 'basic', pt_date || null, pt_time || null, trainer_email || null, req.params.id],
+      'UPDATE customers SET name = ?, phone = ?, email = ?, child_name = ?, referral_source = ?, notes = ?, wants_pt = ?, customer_type = ?, pt_date = ?, pt_time = ?, trainer_email = ?, is_recurring = ?, recurrence_type = ?, recurrence_interval = ?, recurrence_end_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [
+        name, phone, email || null, child_name || null, referral_source || null, notes || null, 
+        wants_pt ? 1 : 0, customer_type || 'basic', pt_date || null, pt_time || null, trainer_email || null,
+        is_recurring ? 1 : 0, recurrence_type || null, recurrence_interval || null, recurrence_end_date || null,
+        req.params.id
+      ],
       async function(updateErr) {
         if (updateErr) {
           return res.status(500).json({ error: updateErr.message });

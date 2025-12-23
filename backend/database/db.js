@@ -121,10 +121,20 @@ if (isPostgres) {
           trainer_email TEXT,
           archived INTEGER DEFAULT 0,
           archived_at TIMESTAMP,
+          is_recurring INTEGER DEFAULT 0,
+          recurrence_type TEXT,
+          recurrence_interval INTEGER,
+          recurrence_end_date DATE,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `);
+
+      // Add recurring columns if they don't exist (for existing databases)
+      await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS is_recurring INTEGER DEFAULT 0`).catch(() => {});
+      await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS recurrence_type TEXT`).catch(() => {});
+      await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS recurrence_interval INTEGER`).catch(() => {});
+      await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS recurrence_end_date DATE`).catch(() => {});
 
       await pool.query(`
         CREATE TABLE IF NOT EXISTS reminders (
@@ -219,6 +229,11 @@ if (isPostgres) {
     db.run(`ALTER TABLE customers ADD COLUMN archived INTEGER DEFAULT 0`, () => {});
     db.run(`ALTER TABLE customers ADD COLUMN archived_at DATETIME`, () => {});
     db.run(`ALTER TABLE customers ADD COLUMN pt_time TEXT`, () => {});
+    // Recurring session columns
+    db.run(`ALTER TABLE customers ADD COLUMN is_recurring INTEGER DEFAULT 0`, () => {});
+    db.run(`ALTER TABLE customers ADD COLUMN recurrence_type TEXT`, () => {});
+    db.run(`ALTER TABLE customers ADD COLUMN recurrence_interval INTEGER`, () => {});
+    db.run(`ALTER TABLE customers ADD COLUMN recurrence_end_date DATE`, () => {});
 
     db.run(`CREATE TABLE IF NOT EXISTS reminders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

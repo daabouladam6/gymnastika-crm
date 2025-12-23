@@ -38,9 +38,24 @@ export default function PTCustomerList({ customers, onUpdate }) {
       ...customer, 
       pt_date: customer.pt_date || '',
       pt_time: customer.pt_time || '',
-      trainer_email: customer.trainer_email || ''
+      trainer_email: customer.trainer_email || '',
+      is_recurring: customer.is_recurring === 1 || customer.is_recurring === true,
+      recurrence_type: customer.recurrence_type || 'weekly',
+      recurrence_interval: customer.recurrence_interval || 7,
+      recurrence_end_date: customer.recurrence_end_date || ''
     });
     setError(null);
+  };
+
+  // Helper to get recurrence description
+  const getRecurrenceText = (customer) => {
+    if (!customer.is_recurring) return null;
+    switch (customer.recurrence_type) {
+      case 'daily': return 'Daily';
+      case 'weekly': return 'Weekly';
+      case 'custom': return `Every ${customer.recurrence_interval} days`;
+      default: return 'Recurring';
+    }
   };
 
   const cancelEdit = () => {
@@ -54,9 +69,17 @@ export default function PTCustomerList({ customers, onUpdate }) {
     setError(null);
 
     try {
+      const submitData = {
+        ...editData,
+        customer_type: 'pt',
+        is_recurring: editData.is_recurring,
+        recurrence_type: editData.is_recurring ? editData.recurrence_type : null,
+        recurrence_interval: editData.is_recurring && editData.recurrence_type === 'custom' ? editData.recurrence_interval : null,
+        recurrence_end_date: editData.is_recurring && editData.recurrence_end_date ? editData.recurrence_end_date : null
+      };
       await axios.put(
         `${API_URL}/customers/${id}`, 
-        { ...editData, customer_type: 'pt' },
+        submitData,
         { headers: getAuthHeaders() }
       );
       setEditingId(null);
@@ -153,6 +176,62 @@ export default function PTCustomerList({ customers, onUpdate }) {
                     />
                   </div>
                 </div>
+                
+                {/* Recurring Options in Edit Form */}
+                <div className="form-group" style={{ 
+                  backgroundColor: editData.is_recurring ? '#f0f9ff' : '#f9f9f9', 
+                  padding: '12px', 
+                  borderRadius: '6px',
+                  border: editData.is_recurring ? '2px solid #3b82f6' : '1px solid #e0e0e0',
+                  marginBottom: '12px'
+                }}>
+                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', marginBottom: editData.is_recurring ? '10px' : '0' }}>
+                    <input
+                      type="checkbox"
+                      checked={editData.is_recurring || false}
+                      onChange={(e) => setEditData({...editData, is_recurring: e.target.checked})}
+                      style={{ marginRight: '8px' }}
+                    />
+                    <span style={{ fontWeight: '600' }}>?? Recurring Session</span>
+                  </label>
+                  
+                  {editData.is_recurring && (
+                    <>
+                      <select
+                        value={editData.recurrence_type || 'weekly'}
+                        onChange={(e) => setEditData({...editData, recurrence_type: e.target.value})}
+                        className="form-input"
+                        style={{ marginBottom: '8px' }}
+                      >
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="custom">Custom Interval</option>
+                      </select>
+                      
+                      {editData.recurrence_type === 'custom' && (
+                        <input
+                          type="number"
+                          min="1"
+                          max="365"
+                          value={editData.recurrence_interval || 7}
+                          onChange={(e) => setEditData({...editData, recurrence_interval: parseInt(e.target.value) || 7})}
+                          placeholder="Days between sessions"
+                          className="form-input"
+                          style={{ marginBottom: '8px' }}
+                        />
+                      )}
+                      
+                      <input
+                        type="date"
+                        value={editData.recurrence_end_date || ''}
+                        onChange={(e) => setEditData({...editData, recurrence_end_date: e.target.value})}
+                        placeholder="End Date (optional)"
+                        className="form-input"
+                      />
+                      <small style={{ color: '#666', fontSize: '11px' }}>End date (optional)</small>
+                    </>
+                  )}
+                </div>
                 <div className="form-group">
                   <input 
                     value={editData.child_name || ''} 
@@ -199,7 +278,14 @@ export default function PTCustomerList({ customers, onUpdate }) {
               <>
                 <div className="customer-header">
                   <h3>{customer.name}</h3>
-                  <span className="badge badge-success">PT Customer</span>
+                  <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                    <span className="badge badge-success">PT Customer</span>
+                    {customer.is_recurring === 1 && (
+                      <span className="badge" style={{ backgroundColor: '#3b82f6', color: 'white' }}>
+                        ?? {getRecurrenceText(customer)}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 
                 <div className="customer-details">
