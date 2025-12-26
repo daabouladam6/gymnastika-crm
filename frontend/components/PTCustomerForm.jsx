@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { getAuthHeaders } from '../lib/auth';
 import { TRAINERS } from '../lib/trainers';
@@ -33,6 +33,78 @@ export default function PTCustomerForm({ onAdd }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+  
+  // For selecting existing customers
+  const [customerMode, setCustomerMode] = useState('new'); // 'new' or 'existing'
+  const [basicCustomers, setBasicCustomers] = useState([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [loadingCustomers, setLoadingCustomers] = useState(false);
+
+  // Fetch basic customers when component mounts or when mode changes to 'existing'
+  useEffect(() => {
+    if (customerMode === 'existing') {
+      fetchBasicCustomers();
+    }
+  }, [customerMode]);
+
+  const fetchBasicCustomers = async () => {
+    setLoadingCustomers(true);
+    try {
+      const response = await axios.get(`${API_URL}/customers/basic`, { headers: getAuthHeaders() });
+      setBasicCustomers(response.data || []);
+    } catch (err) {
+      console.error('Error fetching basic customers:', err);
+      setBasicCustomers([]);
+    } finally {
+      setLoadingCustomers(false);
+    }
+  };
+
+  // Handle selecting an existing customer
+  const handleSelectCustomer = (customerId) => {
+    setSelectedCustomerId(customerId);
+    if (customerId) {
+      const customer = basicCustomers.find(c => c.id === parseInt(customerId));
+      if (customer) {
+        setFormData({
+          ...formData,
+          name: customer.name || '',
+          phone: customer.phone || '',
+          email: customer.email || '',
+          child_name: customer.child_name || '',
+          referral_source: customer.referral_source || '',
+          notes: customer.notes || ''
+        });
+      }
+    } else {
+      // Clear the form if no customer selected
+      setFormData({
+        ...formData,
+        name: '',
+        phone: '',
+        email: '',
+        child_name: '',
+        referral_source: '',
+        notes: ''
+      });
+    }
+  };
+
+  // Handle switching between new and existing customer mode
+  const handleModeChange = (mode) => {
+    setCustomerMode(mode);
+    setSelectedCustomerId('');
+    // Reset customer fields when switching modes
+    setFormData({
+      ...formData,
+      name: '',
+      phone: '',
+      email: '',
+      child_name: '',
+      referral_source: '',
+      notes: ''
+    });
+  };
 
   // Toggle a day in pt_days array
   const toggleDay = (dayValue) => {
@@ -84,16 +156,31 @@ export default function PTCustomerForm({ onAdd }) {
         is_recurring: formData.is_recurring,
         pt_days: formData.is_recurring ? formData.pt_days.join(',') : null
       };
-      await axios.post(
-        `${API_URL}/customers`, 
-        submitData,
-        { headers: getAuthHeaders() }
-      );
+
+      if (customerMode === 'existing' && selectedCustomerId) {
+        // Update existing customer to become a PT customer
+        await axios.put(
+          `${API_URL}/customers/${selectedCustomerId}`, 
+          submitData,
+          { headers: getAuthHeaders() }
+        );
+      } else {
+        // Create new customer
+        await axios.post(
+          `${API_URL}/customers`, 
+          submitData,
+          { headers: getAuthHeaders() }
+        );
+      }
+
+      // Reset form
       setFormData({ 
         name: '', phone: '', email: '', child_name: '', 
         referral_source: '', pt_date: '', pt_time: '', notes: '', trainer_email: '',
         is_recurring: false, pt_days: []
       });
+      setSelectedCustomerId('');
+      setCustomerMode('new');
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
       if (onAdd) onAdd();
@@ -133,6 +220,88 @@ export default function PTCustomerForm({ onAdd }) {
         </div>
       )}
 
+      {/* Customer Mode Toggle */}
+      <div className="form-group" style={{ marginBottom: '20px' }}>
+        <label style={{ marginBottom: '10px', display: 'block' }}>Customer Type</label>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button
+            type="button"
+            onClick={() => handleModeChange('new')}
+            disabled={loading}
+            style={{
+              flex: 1,
+              padding: '12px 16px',
+              borderRadius: '6px',
+              border: customerMode === 'new' ? '2px solid #10b981' : '1px solid #ccc',
+              backgroundColor: customerMode === 'new' ? '#ecfdf5' : '#fff',
+              color: customerMode === 'new' ? '#059669' : '#666',
+              cursor: 'pointer',
+              fontWeight: customerMode === 'new' ? '600' : '400',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            ➕ New Customer
+          </button>
+          <button
+            type="button"
+            onClick={() => handleModeChange('existing')}
+            disabled={loading}
+            style={{
+              flex: 1,
+              padding: '12px 16px',
+              borderRadius: '6px',
+              border: customerMode === 'existing' ? '2px solid #3b82f6' : '1px solid #ccc',
+              backgroundColor: customerMode === 'existing' ? '#eff6ff' : '#fff',
+              color: customerMode === 'existing' ? '#2563eb' : '#666',
+              cursor: 'pointer',
+              fontWeight: customerMode === 'existing' ? '600' : '400',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            👤 Existing Customer
+          </button>
+        </div>
+      </div>
+
+      {/* Existing Customer Dropdown */}
+      {customerMode === 'existing' && (
+        <div className="form-group" style={{ 
+          backgroundColor: '#eff6ff', 
+          padding: '15px', 
+          borderRadius: '8px',
+          border: '1px solid #bfdbfe',
+          marginBottom: '20px'
+        }}>
+          <label htmlFor="existing_customer">Select Basic Customer *</label>
+          <select
+            id="existing_customer"
+            value={selectedCustomerId}
+            onChange={(e) => handleSelectCustomer(e.target.value)}
+            disabled={loading || loadingCustomers}
+            style={{ width: '100%' }}
+          >
+            <option value="">
+              {loadingCustomers ? 'Loading customers...' : 'Choose a customer to upgrade to PT...'}
+            </option>
+            {basicCustomers.map((customer) => (
+              <option key={customer.id} value={customer.id}>
+                {customer.name} - {customer.phone} {customer.email ? `(${customer.email})` : ''}
+              </option>
+            ))}
+          </select>
+          {basicCustomers.length === 0 && !loadingCustomers && (
+            <small style={{ color: '#666', marginTop: '8px', display: 'block' }}>
+              No basic customers found. Switch to "New Customer" to create one.
+            </small>
+          )}
+          {selectedCustomerId && (
+            <small style={{ color: '#059669', marginTop: '8px', display: 'block' }}>
+              ✓ Customer selected - their info has been pre-filled below
+            </small>
+          )}
+        </div>
+      )}
+
       <div className="form-group">
         <label htmlFor="pt_name">Name *</label>
         <input
@@ -142,7 +311,7 @@ export default function PTCustomerForm({ onAdd }) {
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           required
-          disabled={loading}
+          disabled={loading || (customerMode === 'existing' && selectedCustomerId)}
         />
       </div>
 
@@ -155,7 +324,7 @@ export default function PTCustomerForm({ onAdd }) {
           value={formData.phone}
           onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
           required
-          disabled={loading}
+          disabled={loading || (customerMode === 'existing' && selectedCustomerId)}
         />
       </div>
 
@@ -168,7 +337,7 @@ export default function PTCustomerForm({ onAdd }) {
           value={formData.email}
           onChange={(e) => setFormData({ ...formData, email: e.target.value })}
           required
-          disabled={loading}
+          disabled={loading || (customerMode === 'existing' && selectedCustomerId)}
         />
         <small className="form-hint">Customer will receive confirmation and reminder emails</small>
       </div>
@@ -330,9 +499,14 @@ export default function PTCustomerForm({ onAdd }) {
       <button 
         type="submit" 
         className="btn btn-primary"
-        disabled={loading}
+        disabled={loading || (customerMode === 'existing' && !selectedCustomerId)}
       >
-        {loading ? 'Adding...' : 'Add PT Customer'}
+        {loading 
+          ? 'Processing...' 
+          : customerMode === 'existing' && selectedCustomerId
+            ? 'Upgrade to PT Customer'
+            : 'Add PT Customer'
+        }
       </button>
     </form>
   );
