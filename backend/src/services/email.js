@@ -334,9 +334,10 @@ async function sendReminderEmail(to, customerName, reminderType, reminderDate, n
  * @param {string} ptTime - PT session time (optional)
  * @returns {Promise} - Email result
  */
-async function sendTrainerConfirmationEmail(to, clientName, ptDate, clientEmail, clientPhone, ptTime = null) {
+async function sendTrainerConfirmationEmail(to, clientName, ptDate, clientEmail, clientPhone, ptTime = null, childName = null) {
   const dateTimeDisplay = ptTime ? `${ptDate} at ${ptTime}` : ptDate;
-  const subject = `New Client Session Scheduled - ${clientName} on ${dateTimeDisplay}`;
+  const displayName = childName ? `${clientName} (Child: ${childName})` : clientName;
+  const subject = `New Client Session Scheduled - ${displayName} on ${dateTimeDisplay}`;
   
   const html = `
     <!DOCTYPE html>
@@ -353,6 +354,7 @@ async function sendTrainerConfirmationEmail(to, clientName, ptDate, clientEmail,
         .client-info { margin: 10px 0; }
         .client-info strong { color: #333; }
         .session-time { color: #007bff; font-weight: bold; }
+        .child-name { color: #e91e63; font-weight: bold; }
         .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
       </style>
     </head>
@@ -368,6 +370,7 @@ async function sendTrainerConfirmationEmail(to, clientName, ptDate, clientEmail,
           <div class="client-box">
             <h2>📋 Client Details</h2>
             <p class="client-info"><strong>Client Name:</strong> ${clientName}</p>
+            ${childName ? `<p class="client-info"><strong>👶 Child's Name:</strong> <span class="child-name">${childName}</span></p>` : ''}
             <p class="client-info"><strong>Session Date:</strong> ${ptDate}</p>
             ${ptTime ? `<p class="client-info"><strong>🕐 Session Time:</strong> <span class="session-time">${ptTime}</span></p>` : ''}
             <p class="client-info"><strong>Phone:</strong> ${clientPhone || 'Not provided'}</p>
@@ -386,7 +389,7 @@ async function sendTrainerConfirmationEmail(to, clientName, ptDate, clientEmail,
     </html>
   `;
 
-  const text = `Hi,\n\nA new private session has been scheduled for you at Gymnastika!\n\nCLIENT DETAILS:\nClient Name: ${clientName}\nSession Date: ${ptDate}${ptTime ? `\nSession Time: ${ptTime}` : ''}\nPhone: ${clientPhone || 'Not provided'}${clientEmail ? `\nEmail: ${clientEmail}` : ''}\n\nPlease make sure to prepare for this session and contact the client if needed.\n\nBest regards,\nGymnastika`;
+  const text = `Hi,\n\nA new private session has been scheduled for you at Gymnastika!\n\nCLIENT DETAILS:\nClient Name: ${clientName}${childName ? `\nChild's Name: ${childName}` : ''}\nSession Date: ${ptDate}${ptTime ? `\nSession Time: ${ptTime}` : ''}\nPhone: ${clientPhone || 'Not provided'}${clientEmail ? `\nEmail: ${clientEmail}` : ''}\n\nPlease make sure to prepare for this session and contact the client if needed.\n\nBest regards,\nGymnastika`;
 
   return sendEmail(to, subject, html, text);
 }
@@ -401,9 +404,10 @@ async function sendTrainerConfirmationEmail(to, clientName, ptDate, clientEmail,
  * @param {string} ptTime - PT session time (optional)
  * @returns {Promise} - Email result
  */
-async function sendTrainerReminderEmail(to, clientName, ptDate, clientEmail, clientPhone, ptTime = null) {
+async function sendTrainerReminderEmail(to, clientName, ptDate, clientEmail, clientPhone, ptTime = null, childName = null) {
   const timeDisplay = ptTime ? ` at ${ptTime}` : '';
-  const subject = `TODAY${timeDisplay}: Session with ${clientName}`;
+  const displayName = childName ? `${clientName} (Child: ${childName})` : clientName;
+  const subject = `TODAY${timeDisplay}: Session with ${displayName}`;
   
   const html = `
     <!DOCTYPE html>
@@ -421,6 +425,7 @@ async function sendTrainerReminderEmail(to, clientName, ptDate, clientEmail, cli
         .client-info { margin: 10px 0; font-size: 16px; }
         .client-info strong { color: #333; }
         .session-time { color: #007bff; font-weight: bold; font-size: 18px; }
+        .child-name { color: #e91e63; font-weight: bold; }
         .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
       </style>
     </head>
@@ -437,6 +442,7 @@ async function sendTrainerReminderEmail(to, clientName, ptDate, clientEmail, cli
           <div class="today-box">
             <h2>📅 Today's Session</h2>
             <p class="client-info"><strong>Client:</strong> ${clientName}</p>
+            ${childName ? `<p class="client-info"><strong>👶 Child's Name:</strong> <span class="child-name">${childName}</span></p>` : ''}
             <p class="client-info"><strong>Date:</strong> ${ptDate}</p>
             ${ptTime ? `<p class="client-info"><strong>🕐 Time:</strong> <span class="session-time">${ptTime}</span></p>` : ''}
             <p class="client-info"><strong>Phone:</strong> ${clientPhone || 'Not provided'}</p>
@@ -457,7 +463,7 @@ async function sendTrainerReminderEmail(to, clientName, ptDate, clientEmail, cli
     </html>
   `;
 
-  const text = `Hi,\n\nJust a reminder that you have a PRIVATE SESSION TODAY${timeDisplay}!\n\nTODAY'S SESSION:\nClient: ${clientName}\nDate: ${ptDate}${ptTime ? `\nTime: ${ptTime}` : ''}\nPhone: ${clientPhone || 'Not provided'}${clientEmail ? `\nEmail: ${clientEmail}` : ''}\n\nMake sure you're prepared and have everything ready for the session!\n\nHave a great session!\n\nBest regards,\nGymnastika`;
+  const text = `Hi,\n\nJust a reminder that you have a PRIVATE SESSION TODAY${timeDisplay}!\n\nTODAY'S SESSION:\nClient: ${clientName}${childName ? `\nChild's Name: ${childName}` : ''}\nDate: ${ptDate}${ptTime ? `\nTime: ${ptTime}` : ''}\nPhone: ${clientPhone || 'Not provided'}${clientEmail ? `\nEmail: ${clientEmail}` : ''}\n\nMake sure you're prepared and have everything ready for the session!\n\nHave a great session!\n\nBest regards,\nGymnastika`;
 
   return sendEmail(to, subject, html, text);
 }
@@ -538,8 +544,9 @@ async function sendPTDateChangeEmail(to, customerName, oldDate, newDate, trainer
  * @param {string} clientPhone - Client phone
  * @returns {Promise} - Email result
  */
-async function sendTrainerDateChangeEmail(to, clientName, oldDate, newDate, clientEmail, clientPhone) {
-  const subject = `Session Date Changed - ${clientName}: ${newDate}`;
+async function sendTrainerDateChangeEmail(to, clientName, oldDate, newDate, clientEmail, clientPhone, childName = null) {
+  const displayName = childName ? `${clientName} (Child: ${childName})` : clientName;
+  const subject = `Session Date Changed - ${displayName}: ${newDate}`;
   
   const html = `
     <!DOCTYPE html>
@@ -556,6 +563,7 @@ async function sendTrainerDateChangeEmail(to, clientName, oldDate, newDate, clie
         .old-date { color: #dc3545; text-decoration: line-through; }
         .new-date { color: #28a745; font-weight: bold; font-size: 18px; }
         .client-info { margin: 10px 0; }
+        .child-name { color: #e91e63; font-weight: bold; }
         .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
       </style>
     </head>
@@ -571,6 +579,7 @@ async function sendTrainerDateChangeEmail(to, clientName, oldDate, newDate, clie
           <div class="change-box">
             <h2>📋 Updated Session Details</h2>
             <p class="client-info"><strong>Client:</strong> ${clientName}</p>
+            ${childName ? `<p class="client-info"><strong>👶 Child's Name:</strong> <span class="child-name">${childName}</span></p>` : ''}
             <p class="client-info"><strong>Old Date:</strong> <span class="old-date">${oldDate}</span></p>
             <p class="client-info"><strong>New Date:</strong> <span class="new-date">${newDate}</span></p>
             <p class="client-info"><strong>Phone:</strong> ${clientPhone || 'Not provided'}</p>
@@ -589,7 +598,7 @@ async function sendTrainerDateChangeEmail(to, clientName, oldDate, newDate, clie
     </html>
   `;
 
-  const text = `Hi,\n\nA client's session date has been changed.\n\nUPDATED SESSION DETAILS:\nClient: ${clientName}\nOld Date: ${oldDate}\nNew Date: ${newDate}\nPhone: ${clientPhone || 'Not provided'}${clientEmail ? `\nEmail: ${clientEmail}` : ''}\n\nPlease update your schedule accordingly.\n\nBest regards,\nGymnastika`;
+  const text = `Hi,\n\nA client's session date has been changed.\n\nUPDATED SESSION DETAILS:\nClient: ${clientName}${childName ? `\nChild's Name: ${childName}` : ''}\nOld Date: ${oldDate}\nNew Date: ${newDate}\nPhone: ${clientPhone || 'Not provided'}${clientEmail ? `\nEmail: ${clientEmail}` : ''}\n\nPlease update your schedule accordingly.\n\nBest regards,\nGymnastika`;
 
   return sendEmail(to, subject, html, text);
 }
@@ -665,8 +674,9 @@ async function sendPTCancellationEmail(to, customerName, ptDate, trainerEmail = 
  * @param {string} clientPhone - Client phone
  * @returns {Promise} - Email result
  */
-async function sendTrainerCancellationEmail(to, clientName, ptDate, clientEmail, clientPhone) {
-  const subject = `Session Cancelled - ${clientName} (${ptDate})`;
+async function sendTrainerCancellationEmail(to, clientName, ptDate, clientEmail, clientPhone, childName = null) {
+  const displayName = childName ? `${clientName} (Child: ${childName})` : clientName;
+  const subject = `Session Cancelled - ${displayName} (${ptDate})`;
   
   const html = `
     <!DOCTYPE html>
@@ -682,6 +692,7 @@ async function sendTrainerCancellationEmail(to, clientName, ptDate, clientEmail,
         .cancel-box h2 { color: #dc3545; margin: 0 0 15px 0; font-size: 18px; }
         .cancelled-date { color: #dc3545; text-decoration: line-through; font-weight: bold; }
         .client-info { margin: 10px 0; }
+        .child-name { color: #e91e63; font-weight: bold; }
         .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
       </style>
     </head>
@@ -697,6 +708,7 @@ async function sendTrainerCancellationEmail(to, clientName, ptDate, clientEmail,
           <div class="cancel-box">
             <h2>Cancelled Session Details</h2>
             <p class="client-info"><strong>Client:</strong> ${clientName}</p>
+            ${childName ? `<p class="client-info"><strong>👶 Child's Name:</strong> <span class="child-name">${childName}</span></p>` : ''}
             <p class="client-info"><strong>Cancelled Date:</strong> <span class="cancelled-date">${ptDate}</span></p>
             <p class="client-info"><strong>Phone:</strong> ${clientPhone || 'Not provided'}</p>
             ${clientEmail ? `<p class="client-info"><strong>Email:</strong> ${clientEmail}</p>` : ''}
@@ -714,7 +726,7 @@ async function sendTrainerCancellationEmail(to, clientName, ptDate, clientEmail,
     </html>
   `;
 
-  const text = `Hi,\n\nA client's session has been CANCELLED.\n\nCANCELLED SESSION DETAILS:\nClient: ${clientName}\nCancelled Date: ${ptDate}\nPhone: ${clientPhone || 'Not provided'}${clientEmail ? `\nEmail: ${clientEmail}` : ''}\n\nPlease update your schedule accordingly. This time slot is now available.\n\nBest regards,\nGymnastika`;
+  const text = `Hi,\n\nA client's session has been CANCELLED.\n\nCANCELLED SESSION DETAILS:\nClient: ${clientName}${childName ? `\nChild's Name: ${childName}` : ''}\nCancelled Date: ${ptDate}\nPhone: ${clientPhone || 'Not provided'}${clientEmail ? `\nEmail: ${clientEmail}` : ''}\n\nPlease update your schedule accordingly. This time slot is now available.\n\nBest regards,\nGymnastika`;
 
   return sendEmail(to, subject, html, text);
 }
