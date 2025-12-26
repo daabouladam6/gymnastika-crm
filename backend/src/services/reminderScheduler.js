@@ -70,8 +70,8 @@ function checkRecurringReminders() {
   console.log(`  Today's date: ${today}`);
   console.log(`  Day of week: ${now.getDay()} (0=Sun, 1=Mon, ..., 6=Sat)`);
   
-  // Find all recurring PT customers where we haven't sent a reminder today
-  // Use explicit date comparison for PostgreSQL compatibility
+  // Find all recurring PT customers
+  // We'll check last_reminder_date in code to handle both PostgreSQL and SQLite
   const query = `
     SELECT id, name, email, phone, pt_date, pt_time, trainer_email, pt_days, child_name, last_reminder_date
     FROM customers 
@@ -80,34 +80,31 @@ function checkRecurringReminders() {
       AND pt_days IS NOT NULL
       AND pt_time IS NOT NULL
       AND (archived = 0 OR archived IS NULL)
-      AND (last_reminder_date IS NULL OR last_reminder_date::text < '${today}')
   `;
   
   db.all(query, async (err, rows) => {
     if (err) {
       console.error('Error checking recurring reminders:', err);
-      // Try SQLite syntax as fallback
-      const sqliteQuery = `
-        SELECT id, name, email, phone, pt_date, pt_time, trainer_email, pt_days, child_name, last_reminder_date
-        FROM customers 
-        WHERE customer_type = 'pt' 
-          AND is_recurring = 1
-          AND pt_days IS NOT NULL
-          AND pt_time IS NOT NULL
-          AND (archived = 0 OR archived IS NULL)
-          AND (last_reminder_date IS NULL OR last_reminder_date < '${today}')
-      `;
-      db.all(sqliteQuery, async (sqliteErr, sqliteRows) => {
-        if (sqliteErr) {
-          console.error('SQLite fallback also failed:', sqliteErr);
-          return;
-        }
-        processRecurringReminders(sqliteRows, today);
-      });
       return;
     }
     
-    processRecurringReminders(rows, today);
+    // Filter out customers who already received a reminder today
+    const eligibleCustomers = rows.filter(customer => {
+      const lastReminder = customer.last_reminder_date;
+      if (!lastReminder) {
+        console.log(`  ${customer.name}: No previous reminder - eligible`);
+        return true;
+      }
+      // Handle both date string and Date object
+      const lastReminderStr = typeof lastReminder === 'string' 
+        ? lastReminder.split('T')[0] 
+        : new Date(lastReminder).toISOString().split('T')[0];
+      const alreadySent = lastReminderStr === today;
+      console.log(`  ${customer.name}: Last reminder ${lastReminderStr}, Today ${today}, Already sent: ${alreadySent}`);
+      return !alreadySent;
+    });
+    
+    processRecurringReminders(eligibleCustomers, today);
   });
 }
 
