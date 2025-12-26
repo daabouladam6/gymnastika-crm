@@ -32,7 +32,8 @@ function isTodaySessionDay(ptDays) {
 
 /**
  * Check if it's time to send a reminder (7 hours before session time)
- * Uses a 1-hour window to ensure reminders aren't missed
+ * IMPROVED: Sends reminder anytime from 7 hours before up until 1 hour before the session
+ * This ensures reminders are sent even if the exact 7-hour mark is missed
  * @param {string} ptTime - Session time in HH:MM format
  * @returns {boolean}
  */
@@ -46,17 +47,21 @@ function shouldSendReminder(ptTime) {
   const sessionTime = new Date();
   sessionTime.setHours(hours, minutes, 0, 0);
   
-  // Calculate 7 hours before session
-  const reminderTime = new Date(sessionTime);
-  reminderTime.setHours(reminderTime.getHours() - 7);
+  // Calculate time boundaries
+  const sevenHoursBefore = new Date(sessionTime);
+  sevenHoursBefore.setHours(sevenHoursBefore.getHours() - 7);
   
-  // Check if we're within the reminder window
-  // Send reminders if current time is between 7h before and 6h before (1 hour window)
-  // This ensures the scheduler (running every 30 min) catches it
-  const timeDiff = now.getTime() - reminderTime.getTime();
-  const oneHour = 60 * 60 * 1000;
+  const oneHourBefore = new Date(sessionTime);
+  oneHourBefore.setHours(oneHourBefore.getHours() - 1);
   
-  return timeDiff >= 0 && timeDiff <= oneHour;
+  // Send reminder if we're between 7 hours before and 1 hour before the session
+  // This gives a 6-hour window to catch the reminder
+  const isAfterReminderTime = now >= sevenHoursBefore;
+  const isBeforeSession = now <= oneHourBefore;
+  
+  console.log(`    [Debug] Session: ${ptTime}, Now: ${now.toLocaleTimeString()}, 7h before: ${sevenHoursBefore.toLocaleTimeString()}, Should send: ${isAfterReminderTime && isBeforeSession}`);
+  
+  return isAfterReminderTime && isBeforeSession;
 }
 
 /**
@@ -75,8 +80,13 @@ function checkRecurringReminders() {
   console.log('🔄 Checking recurring PT session reminders...');
   
   const today = getTodayDate();
+  const now = new Date();
+  console.log(`  Current time: ${now.toISOString()} (${now.toLocaleTimeString()})`);
+  console.log(`  Today's date: ${today}`);
+  console.log(`  Day of week: ${now.getDay()} (0=Sun, 1=Mon, ..., 6=Sat)`);
   
   // Find all recurring PT customers where we haven't sent a reminder today
+  // Use explicit date comparison for PostgreSQL compatibility
   const query = `
     SELECT id, name, email, phone, pt_date, pt_time, trainer_email, pt_days, child_name, last_reminder_date
     FROM customers 
@@ -85,99 +95,135 @@ function checkRecurringReminders() {
       AND pt_days IS NOT NULL
       AND pt_time IS NOT NULL
       AND (archived = 0 OR archived IS NULL)
-      AND (last_reminder_date IS NULL OR last_reminder_date < date('now'))
+      AND (last_reminder_date IS NULL OR last_reminder_date::text < '${today}')
   `;
   
   db.all(query, async (err, rows) => {
     if (err) {
       console.error('Error checking recurring reminders:', err);
-      return;
-    }
-    
-    if (rows.length === 0) {
-      console.log('  No recurring PT sessions need reminders.');
-      return;
-    }
-    
-    const whatsappEnabled = isWhatsAppAvailable();
-    let remindersSent = 0;
-    
-    console.log(`  Found ${rows.length} recurring PT customer(s) to check.`);
-    console.log(`  WhatsApp: ${whatsappEnabled ? '✅ Available' : '⚠️ Not configured'}`);
-    
-    for (const customer of rows) {
-      // Check if today is one of the session days
-      if (!isTodaySessionDay(customer.pt_days)) {
-        continue;
-      }
-      
-      // Check if it's time to send the reminder (7 hours before, 1-hour window)
-      if (!shouldSendReminder(customer.pt_time)) {
-        continue;
-      }
-      
-      remindersSent++;
-      const dayNames = getDayNames(customer.pt_days);
-      console.log(`\n  📧 Recurring reminder: ${customer.name}`);
-      console.log(`     Session days: ${dayNames} at ${customer.pt_time}`);
-      
-      // ====== SEND TO CUSTOMER ======
-      if (customer.email) {
-        try {
-          await sendPTReminderEmail(customer.email, customer.name, today, customer.trainer_email, customer.pt_time);
-          console.log(`    ✓ Email sent to ${customer.email}`);
-        } catch (err) {
-          console.error(`    ✗ Email failed: ${err.message}`);
+      // Try SQLite syntax as fallback
+      const sqliteQuery = `
+        SELECT id, name, email, phone, pt_date, pt_time, trainer_email, pt_days, child_name, last_reminder_date
+        FROM customers 
+        WHERE customer_type = 'pt' 
+          AND is_recurring = 1
+          AND pt_days IS NOT NULL
+          AND pt_time IS NOT NULL
+          AND (archived = 0 OR archived IS NULL)
+          AND (last_reminder_date IS NULL OR last_reminder_date < '${today}')
+      `;
+      db.all(sqliteQuery, async (sqliteErr, sqliteRows) => {
+        if (sqliteErr) {
+          console.error('SQLite fallback also failed:', sqliteErr);
+          return;
         }
-      }
-      
-      if (customer.phone && whatsappEnabled) {
-        try {
-          await sendPTReminderWhatsApp(customer.phone, customer.name, today, customer.trainer_email, customer.pt_time);
-          console.log(`    ✓ WhatsApp sent to ${customer.phone}`);
-        } catch (err) {
-          console.error(`    ✗ WhatsApp failed: ${err.message}`);
-        }
-      }
-      
-      // ====== SEND TO TRAINER ======
-      if (customer.trainer_email) {
-        console.log(`  📧 Trainer: ${customer.trainer_email}`);
-        
-        try {
-          await sendTrainerReminderEmail(customer.trainer_email, customer.name, today, customer.email, customer.phone, customer.pt_time, customer.child_name);
-          console.log(`    ✓ Email sent to trainer`);
-        } catch (err) {
-          console.error(`    ✗ Email failed: ${err.message}`);
-        }
-        
-        const trainerPhone = getTrainerPhone(customer.trainer_email);
-        if (trainerPhone && whatsappEnabled) {
-          try {
-            await sendTrainerReminderWhatsApp(trainerPhone, customer.name, today, customer.email, customer.phone, customer.pt_time);
-            console.log(`    ✓ WhatsApp sent to trainer (${trainerPhone})`);
-          } catch (err) {
-            console.error(`    ✗ Trainer WhatsApp failed: ${err.message}`);
-          }
-        }
-      }
-      
-      // Update last_reminder_date to prevent duplicate reminders today
-      db.run('UPDATE customers SET last_reminder_date = ? WHERE id = ?', [today, customer.id], (updateErr) => {
-        if (updateErr) {
-          console.error(`    ✗ Failed to update last_reminder_date: ${updateErr.message}`);
-        } else {
-          console.log(`    ✓ Marked reminder as sent for today`);
-        }
+        processRecurringReminders(sqliteRows, today);
       });
+      return;
     }
     
-    if (remindersSent === 0) {
-      console.log('  No recurring reminders to send at this time.');
-    } else {
-      console.log(`\n  ✅ Sent ${remindersSent} recurring reminder(s).`);
-    }
+    processRecurringReminders(rows, today);
   });
+}
+
+async function processRecurringReminders(rows, today) {
+  if (rows.length === 0) {
+    console.log('  No recurring PT sessions need reminders.');
+    return;
+  }
+  
+  const whatsappEnabled = isWhatsAppAvailable();
+  let remindersSent = 0;
+  
+  console.log(`  Found ${rows.length} recurring PT customer(s) to check.`);
+  console.log(`  WhatsApp: ${whatsappEnabled ? '✅ Available' : '⚠️ Not configured'}`);
+  
+  for (const customer of rows) {
+    console.log(`\n  Checking: ${customer.name}`);
+    console.log(`    pt_days: ${customer.pt_days}, pt_time: ${customer.pt_time}`);
+    console.log(`    last_reminder_date: ${customer.last_reminder_date || 'never'}`);
+    
+    // Check if today is one of the session days
+    const isTodaySession = isTodaySessionDay(customer.pt_days);
+    console.log(`    Is today a session day? ${isTodaySession}`);
+    
+    if (!isTodaySession) {
+      console.log(`    ⏭️ Skipping - not a session day`);
+      continue;
+    }
+    
+    // Check if it's time to send the reminder
+    const shouldSend = shouldSendReminder(customer.pt_time);
+    if (!shouldSend) {
+      console.log(`    ⏭️ Skipping - not in reminder window yet`);
+      continue;
+    }
+      
+    remindersSent++;
+    const dayNames = getDayNames(customer.pt_days);
+    console.log(`\n  📧 SENDING Recurring reminder: ${customer.name}`);
+    console.log(`     Session days: ${dayNames} at ${customer.pt_time}`);
+    
+    // ====== SEND TO CUSTOMER ======
+    if (customer.email) {
+      try {
+        await sendPTReminderEmail(customer.email, customer.name, today, customer.trainer_email, customer.pt_time);
+        console.log(`    ✓ Email sent to ${customer.email}`);
+      } catch (err) {
+        console.error(`    ✗ Email failed: ${err.message}`);
+      }
+    } else {
+      console.log(`    ⚠️ No email for customer`);
+    }
+    
+    if (customer.phone && whatsappEnabled) {
+      try {
+        await sendPTReminderWhatsApp(customer.phone, customer.name, today, customer.trainer_email, customer.pt_time);
+        console.log(`    ✓ WhatsApp sent to ${customer.phone}`);
+      } catch (err) {
+        console.error(`    ✗ WhatsApp failed: ${err.message}`);
+      }
+    }
+    
+    // ====== SEND TO TRAINER ======
+    if (customer.trainer_email) {
+      console.log(`  📧 Trainer: ${customer.trainer_email}`);
+      
+      try {
+        await sendTrainerReminderEmail(customer.trainer_email, customer.name, today, customer.email, customer.phone, customer.pt_time, customer.child_name);
+        console.log(`    ✓ Email sent to trainer`);
+      } catch (err) {
+        console.error(`    ✗ Email failed: ${err.message}`);
+      }
+      
+      const trainerPhone = getTrainerPhone(customer.trainer_email);
+      if (trainerPhone && whatsappEnabled) {
+        try {
+          await sendTrainerReminderWhatsApp(trainerPhone, customer.name, today, customer.email, customer.phone, customer.pt_time);
+          console.log(`    ✓ WhatsApp sent to trainer (${trainerPhone})`);
+        } catch (err) {
+          console.error(`    ✗ Trainer WhatsApp failed: ${err.message}`);
+        }
+      }
+    } else {
+      console.log(`    ⚠️ No trainer email assigned`);
+    }
+    
+    // Update last_reminder_date to prevent duplicate reminders today
+    db.run('UPDATE customers SET last_reminder_date = ? WHERE id = ?', [today, customer.id], (updateErr) => {
+      if (updateErr) {
+        console.error(`    ✗ Failed to update last_reminder_date: ${updateErr.message}`);
+      } else {
+        console.log(`    ✓ Marked reminder as sent for today`);
+      }
+    });
+  }
+  
+  if (remindersSent === 0) {
+    console.log('\n  No recurring reminders to send at this time.');
+  } else {
+    console.log(`\n  ✅ Sent ${remindersSent} recurring reminder(s).`);
+  }
 }
 
 /**

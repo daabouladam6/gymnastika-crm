@@ -7,7 +7,7 @@ const authRoutes = require('./routes/auth');
 const whatsappRoutes = require('./routes/whatsapp');
 const backupRoutes = require('./routes/backup');
 const errorHandler = require('./middleware/errorHandler');
-const { startReminderScheduler } = require('./services/reminderScheduler');
+const { startReminderScheduler, checkRecurringReminders } = require('./services/reminderScheduler');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -58,6 +58,20 @@ app.get('/api/health', (req, res) => {
     status: 'ok', 
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
+  });
+});
+
+// Manual trigger for recurring reminders (for testing/debugging)
+app.get('/api/trigger-reminders', (req, res) => {
+  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('🔧 Manual Reminder Trigger');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  checkRecurringReminders();
+  res.json({ 
+    status: 'triggered', 
+    message: 'Recurring reminders check triggered. Check server logs for details.',
+    timestamp: new Date().toISOString(),
+    serverTime: new Date().toLocaleString()
   });
 });
 
