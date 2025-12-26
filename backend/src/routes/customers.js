@@ -456,6 +456,13 @@ router.put('/:id', (req, res) => {
     }
   }
   
+  // Helper to convert pt_days to readable format
+  const getDayNames = (ptDays) => {
+    if (!ptDays) return '';
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    return ptDays.split(',').map(d => dayNames[parseInt(d.trim())]).join(', ');
+  };
+
   // First, get the current customer data to check if PT date/time changed
   db.get('SELECT * FROM customers WHERE id = ?', [req.params.id], (err, oldCustomer) => {
     if (err) {
@@ -465,12 +472,21 @@ router.put('/:id', (req, res) => {
       return res.status(404).json({ error: 'Customer not found' });
     }
     
-    // Check if PT date or time has changed (only for non-recurring)
+    // Check what changed
     const oldPtDate = oldCustomer.pt_date;
     const oldPtTime = oldCustomer.pt_time;
+    const oldPtDays = oldCustomer.pt_days;
     const newPtDate = pt_date;
     const newPtTime = pt_time;
-    const dateOrTimeChanged = customer_type === 'pt' && !is_recurring && oldPtDate && newPtDate && (oldPtDate !== newPtDate || oldPtTime !== newPtTime);
+    const newPtDays = pt_days;
+    
+    // For non-recurring: check if date or time changed
+    const nonRecurringChanged = customer_type === 'pt' && !is_recurring && oldPtDate && newPtDate && 
+      (oldPtDate !== newPtDate || oldPtTime !== newPtTime);
+    
+    // For recurring: check if days or time changed
+    const recurringChanged = customer_type === 'pt' && is_recurring && 
+      (oldPtDays !== newPtDays || oldPtTime !== newPtTime);
     
     // Perform the update
     db.run(
@@ -488,28 +504,54 @@ router.put('/:id', (req, res) => {
           return res.status(404).json({ error: 'Customer not found' });
         }
         
+        const customerEmail = email || oldCustomer.email;
+        const customerPhone = phone || oldCustomer.phone;
+        const trainerEmailAddr = trainer_email || oldCustomer.trainer_email;
+        const customerName = name || oldCustomer.name;
+        const customer = { name: customerName, email: customerEmail, phone: customerPhone };
+        
         // If PT date or time changed (for non-recurring), send notification
-        if (dateOrTimeChanged) {
+        if (nonRecurringChanged) {
           console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-          console.log(`📅 PT Session Rescheduled: ${name}`);
+          console.log(`📅 PT Session Rescheduled: ${customerName}`);
           console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-          
-          const customerEmail = email || oldCustomer.email;
-          const customerPhone = phone || oldCustomer.phone;
-          const trainerEmailAddr = trainer_email || oldCustomer.trainer_email;
-          const customerName = name || oldCustomer.name;
           
           // Format old and new datetime for display
           const oldDateTime = oldPtTime ? `${oldPtDate} at ${oldPtTime}` : oldPtDate;
           const newDateTime = newPtTime ? `${newPtDate} at ${newPtTime}` : newPtDate;
-          
-          const customer = { name: customerName, email: customerEmail, phone: customerPhone };
           
           // Notify customer
           await notifyCustomer('pt_date_change', customer, { oldDateTime, newDateTime, trainerEmail: trainerEmailAddr });
           
           // Notify trainer
           await notifyTrainer('pt_date_change', trainerEmailAddr, customer, { oldDateTime, newDateTime });
+        }
+        
+        // If recurring schedule changed (days or time), send notification
+        if (recurringChanged) {
+          console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+          console.log(`🔄 Recurring Schedule Changed: ${customerName}`);
+          console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+          
+          // Format old and new schedules for display
+          const oldSchedule = oldPtDays ? `${getDayNames(oldPtDays)} at ${oldPtTime || 'TBD'}` : 'Not set';
+          const newSchedule = newPtDays ? `${getDayNames(newPtDays)} at ${newPtTime || 'TBD'}` : 'Not set';
+          
+          console.log(`   Old: ${oldSchedule}`);
+          console.log(`   New: ${newSchedule}`);
+          
+          // Notify customer
+          await notifyCustomer('pt_date_change', customer, { 
+            oldDateTime: `Weekly: ${oldSchedule}`, 
+            newDateTime: `Weekly: ${newSchedule}`, 
+            trainerEmail: trainerEmailAddr 
+          });
+          
+          // Notify trainer
+          await notifyTrainer('pt_date_change', trainerEmailAddr, customer, { 
+            oldDateTime: `Weekly: ${oldSchedule}`, 
+            newDateTime: `Weekly: ${newSchedule}` 
+          });
         }
         
         res.json({ message: 'Customer updated successfully' });

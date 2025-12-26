@@ -137,6 +137,8 @@ if (isPostgres) {
       await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS recurrence_end_date DATE`).catch(() => {});
       // pt_days stores comma-separated day numbers (0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat)
       await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS pt_days TEXT`).catch(() => {});
+      // Track last reminder sent to prevent duplicates
+      await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS last_reminder_date DATE`).catch(() => {});
 
       await pool.query(`
         CREATE TABLE IF NOT EXISTS reminders (
@@ -238,6 +240,8 @@ if (isPostgres) {
     db.run(`ALTER TABLE customers ADD COLUMN recurrence_end_date DATE`, () => {});
     // pt_days stores comma-separated day numbers (0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat)
     db.run(`ALTER TABLE customers ADD COLUMN pt_days TEXT`, () => {});
+    // Track last reminder sent to prevent duplicates
+    db.run(`ALTER TABLE customers ADD COLUMN last_reminder_date DATE`, () => {});
 
     db.run(`CREATE TABLE IF NOT EXISTS reminders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

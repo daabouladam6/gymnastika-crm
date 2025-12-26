@@ -32,6 +32,7 @@ function isTodaySessionDay(ptDays) {
 
 /**
  * Check if it's time to send a reminder (7 hours before session time)
+ * Uses a 1-hour window to ensure reminders aren't missed
  * @param {string} ptTime - Session time in HH:MM format
  * @returns {boolean}
  */
@@ -49,12 +50,13 @@ function shouldSendReminder(ptTime) {
   const reminderTime = new Date(sessionTime);
   reminderTime.setHours(reminderTime.getHours() - 7);
   
-  // Check if we're within the reminder window (between 7h before and session time)
-  // We'll send reminders if current time is within 30 minutes of the 7-hour-before mark
+  // Check if we're within the reminder window
+  // Send reminders if current time is between 7h before and 6h before (1 hour window)
+  // This ensures the scheduler (running every 30 min) catches it
   const timeDiff = now.getTime() - reminderTime.getTime();
-  const thirtyMinutes = 30 * 60 * 1000;
+  const oneHour = 60 * 60 * 1000;
   
-  return timeDiff >= 0 && timeDiff <= thirtyMinutes;
+  return timeDiff >= 0 && timeDiff <= oneHour;
 }
 
 /**
@@ -67,19 +69,23 @@ function getTodayDate() {
 /**
  * Check for recurring PT sessions and send reminders 7 hours before
  * Sends to both customer AND trainer via email AND WhatsApp
+ * Uses last_reminder_date to prevent duplicate reminders on the same day
  */
 function checkRecurringReminders() {
   console.log('🔄 Checking recurring PT session reminders...');
   
-  // Find all recurring PT customers
+  const today = getTodayDate();
+  
+  // Find all recurring PT customers where we haven't sent a reminder today
   const query = `
-    SELECT id, name, email, phone, pt_date, pt_time, trainer_email, pt_days, child_name
+    SELECT id, name, email, phone, pt_date, pt_time, trainer_email, pt_days, child_name, last_reminder_date
     FROM customers 
     WHERE customer_type = 'pt' 
       AND is_recurring = 1
       AND pt_days IS NOT NULL
       AND pt_time IS NOT NULL
       AND (archived = 0 OR archived IS NULL)
+      AND (last_reminder_date IS NULL OR last_reminder_date < date('now'))
   `;
   
   db.all(query, async (err, rows) => {
@@ -89,15 +95,14 @@ function checkRecurringReminders() {
     }
     
     if (rows.length === 0) {
-      console.log('  No recurring PT sessions configured.');
+      console.log('  No recurring PT sessions need reminders.');
       return;
     }
     
     const whatsappEnabled = isWhatsAppAvailable();
-    const today = getTodayDate();
     let remindersSent = 0;
     
-    console.log(`  Found ${rows.length} recurring PT customer(s).`);
+    console.log(`  Found ${rows.length} recurring PT customer(s) to check.`);
     console.log(`  WhatsApp: ${whatsappEnabled ? '✅ Available' : '⚠️ Not configured'}`);
     
     for (const customer of rows) {
@@ -106,7 +111,7 @@ function checkRecurringReminders() {
         continue;
       }
       
-      // Check if it's time to send the reminder (7 hours before)
+      // Check if it's time to send the reminder (7 hours before, 1-hour window)
       if (!shouldSendReminder(customer.pt_time)) {
         continue;
       }
@@ -156,6 +161,15 @@ function checkRecurringReminders() {
           }
         }
       }
+      
+      // Update last_reminder_date to prevent duplicate reminders today
+      db.run('UPDATE customers SET last_reminder_date = ? WHERE id = ?', [today, customer.id], (updateErr) => {
+        if (updateErr) {
+          console.error(`    ✗ Failed to update last_reminder_date: ${updateErr.message}`);
+        } else {
+          console.log(`    ✓ Marked reminder as sent for today`);
+        }
+      });
     }
     
     if (remindersSent === 0) {
