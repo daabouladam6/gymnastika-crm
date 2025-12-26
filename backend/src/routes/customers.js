@@ -480,13 +480,19 @@ router.put('/:id', (req, res) => {
     const newPtTime = pt_time;
     const newPtDays = pt_days;
     
-    // For non-recurring: check if date or time changed
+    // For non-recurring: check if date or time changed (only if there was a previous date set)
     const nonRecurringChanged = customer_type === 'pt' && !is_recurring && oldPtDate && newPtDate && 
       (oldPtDate !== newPtDate || oldPtTime !== newPtTime);
     
-    // For recurring: check if days or time changed
+    // For recurring: check if days or time changed (only if there was a previous schedule set)
+    // Don't send "changed" email when it's a new PT setup (oldPtDays was null/empty)
     const recurringChanged = customer_type === 'pt' && is_recurring && 
+      oldPtDays && // Must have had a previous schedule to count as "changed"
       (oldPtDays !== newPtDays || oldPtTime !== newPtTime);
+    
+    // Check if this is a new PT setup (upgrading from basic or first time setting schedule)
+    const isNewPtSetup = customer_type === 'pt' && is_recurring && 
+      !oldPtDays && newPtDays; // Old schedule was empty, new one is set
     
     // Perform the update
     db.run(
@@ -552,6 +558,28 @@ router.put('/:id', (req, res) => {
           await notifyTrainer('pt_date_change', trainerEmailAddr, customer, { 
             oldDateTime: `Weekly: ${oldSchedule}`, 
             newDateTime: `Weekly: ${newSchedule}` 
+          });
+        }
+        
+        // If this is a new PT setup (first time setting schedule), send confirmation
+        if (isNewPtSetup) {
+          console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+          console.log(`🆕 New PT Schedule Set: ${customerName}`);
+          console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+          
+          const newSchedule = `${getDayNames(newPtDays)} at ${newPtTime || 'TBD'}`;
+          console.log(`   Schedule: Weekly - ${newSchedule}`);
+          
+          // Send confirmation (not "changed") emails
+          await notifyCustomer('pt_confirmation', customer, { 
+            ptDate: `Weekly: ${newSchedule}`, 
+            ptTime: newPtTime,
+            trainerEmail: trainerEmailAddr 
+          });
+          
+          await notifyTrainer('pt_confirmation', trainerEmailAddr, customer, { 
+            ptDate: `Weekly: ${newSchedule}`, 
+            ptTime: newPtTime
           });
         }
         

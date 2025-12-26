@@ -157,21 +157,13 @@ export default function PTCustomerForm({ onAdd }) {
         pt_days: formData.is_recurring ? formData.pt_days.join(',') : null
       };
 
-      if (customerMode === 'existing' && selectedCustomerId) {
-        // Update existing customer to become a PT customer
-        await axios.put(
-          `${API_URL}/customers/${selectedCustomerId}`, 
-          submitData,
-          { headers: getAuthHeaders() }
-        );
-      } else {
-        // Create new customer
-        await axios.post(
-          `${API_URL}/customers`, 
-          submitData,
-          { headers: getAuthHeaders() }
-        );
-      }
+      // Always create a new PT customer (even when based on existing basic customer)
+      // This keeps basic customers separate from PT customers
+      await axios.post(
+        `${API_URL}/customers`, 
+        submitData,
+        { headers: getAuthHeaders() }
+      );
 
       // Reset form
       setFormData({ 
@@ -296,7 +288,7 @@ export default function PTCustomerForm({ onAdd }) {
           )}
           {selectedCustomerId && (
             <small style={{ color: '#059669', marginTop: '8px', display: 'block' }}>
-              ✓ Customer selected - their info has been pre-filled below
+              ✓ Customer selected - their info has been pre-filled below. A new PT customer will be created (the basic customer record will remain unchanged).
             </small>
           )}
         </div>
@@ -504,7 +496,7 @@ export default function PTCustomerForm({ onAdd }) {
         {loading 
           ? 'Processing...' 
           : customerMode === 'existing' && selectedCustomerId
-            ? 'Upgrade to PT Customer'
+            ? 'Create PT Customer (keeps basic record)'
             : 'Add PT Customer'
         }
       </button>
