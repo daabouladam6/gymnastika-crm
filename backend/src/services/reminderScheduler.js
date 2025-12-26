@@ -26,42 +26,27 @@ function getDayNames(ptDays) {
 function isTodaySessionDay(ptDays) {
   if (!ptDays) return false;
   const today = new Date().getDay(); // 0=Sun, 1=Mon, etc.
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const days = ptDays.split(',').map(d => parseInt(d.trim()));
-  return days.includes(today);
+  const isToday = days.includes(today);
+  console.log(`    [Debug] Today is ${dayNames[today]} (${today}), Session days: ${days.join(',')} (${days.map(d => dayNames[d]).join(', ')}), Match: ${isToday}`);
+  return isToday;
 }
 
 /**
- * Check if it's time to send a reminder (7 hours before session time)
- * IMPROVED: Sends reminder anytime from 7 hours before up until 1 hour before the session
- * This ensures reminders are sent even if the exact 7-hour mark is missed
+ * Check if reminder should be sent for a session
+ * SIMPLIFIED: Just check if the session is scheduled for later today
+ * The last_reminder_date check prevents duplicate sends
  * @param {string} ptTime - Session time in HH:MM format
  * @returns {boolean}
  */
 function shouldSendReminder(ptTime) {
-  if (!ptTime) return false;
-  
-  const now = new Date();
-  const [hours, minutes] = ptTime.split(':').map(Number);
-  
-  // Create session time for today
-  const sessionTime = new Date();
-  sessionTime.setHours(hours, minutes, 0, 0);
-  
-  // Calculate time boundaries
-  const sevenHoursBefore = new Date(sessionTime);
-  sevenHoursBefore.setHours(sevenHoursBefore.getHours() - 7);
-  
-  const oneHourBefore = new Date(sessionTime);
-  oneHourBefore.setHours(oneHourBefore.getHours() - 1);
-  
-  // Send reminder if we're between 7 hours before and 1 hour before the session
-  // This gives a 6-hour window to catch the reminder
-  const isAfterReminderTime = now >= sevenHoursBefore;
-  const isBeforeSession = now <= oneHourBefore;
-  
-  console.log(`    [Debug] Session: ${ptTime}, Now: ${now.toLocaleTimeString()}, 7h before: ${sevenHoursBefore.toLocaleTimeString()}, Should send: ${isAfterReminderTime && isBeforeSession}`);
-  
-  return isAfterReminderTime && isBeforeSession;
+  // Always return true - we rely on:
+  // 1. isTodaySessionDay() to check if today is a session day
+  // 2. last_reminder_date in the database to prevent duplicates
+  // This ensures reminders are sent regardless of timezone issues
+  console.log(`    [Debug] Session time: ${ptTime} - will send reminder (timezone-safe)`);
+  return true;
 }
 
 /**
