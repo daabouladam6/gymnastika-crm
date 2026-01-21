@@ -10,6 +10,21 @@ export default function ArchivedCustomerList({ customers, onUpdate }) {
   const [loading, setLoading] = useState({});
   const [error, setError] = useState(null);
   const [sortOrder, setSortOrder] = useState('newest'); // 'newest' or 'oldest'
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Filter customers based on search term
+  const searchFiltered = customers.filter(customer => {
+    if (!searchTerm.trim()) return true;
+    const search = searchTerm.toLowerCase();
+    const trainerName = getTrainerName(customer.trainer_email)?.toLowerCase() || '';
+    return (
+      customer.name?.toLowerCase().includes(search) ||
+      customer.phone?.toLowerCase().includes(search) ||
+      customer.email?.toLowerCase().includes(search) ||
+      customer.child_name?.toLowerCase().includes(search) ||
+      trainerName.includes(search)
+    );
+  });
 
   const handleRestore = async (id, name) => {
     if (!confirm(`Are you sure you want to restore ${name}?`)) {
@@ -51,8 +66,8 @@ export default function ArchivedCustomerList({ customers, onUpdate }) {
     }
   };
 
-  // Sort customers based on sortOrder
-  const sortedCustomers = [...customers].sort((a, b) => {
+  // Sort filtered customers based on sortOrder
+  const sortedCustomers = [...searchFiltered].sort((a, b) => {
     const dateA = new Date(a.archived_at || a.created_at);
     const dateB = new Date(b.archived_at || b.created_at);
     return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
@@ -73,25 +88,68 @@ export default function ArchivedCustomerList({ customers, onUpdate }) {
 
   return (
     <div className="archived-section">
-      <div className="archived-header">
-        <h2>Archived Customers ({customers.length})</h2>
-        <div className="sort-controls">
-          <label htmlFor="sort-select">Sort by: </label>
-          <select
-            id="sort-select"
-            value={sortOrder}
-            onChange={(e) => setSortOrder(e.target.value)}
-            className="sort-select"
-          >
-            <option value="newest">Most Recent</option>
-            <option value="oldest">Oldest First</option>
-          </select>
+      <div className="archived-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '15px' }}>
+        <h2 style={{ margin: 0 }}>Archived Customers ({sortedCustomers.length}{searchTerm ? ` of ${customers.length}` : ''})</h2>
+        <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="search-box" style={{ position: 'relative' }}>
+            <input
+              type="text"
+              placeholder="🔍 Search archived..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                padding: '8px 12px',
+                paddingRight: '30px',
+                borderRadius: '6px',
+                border: '1px solid #ddd',
+                width: '200px',
+                fontSize: '14px'
+              }}
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                style={{
+                  position: 'absolute',
+                  right: '8px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  color: '#999'
+                }}
+                title="Clear search"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          <div className="sort-controls">
+            <label htmlFor="sort-select">Sort: </label>
+            <select
+              id="sort-select"
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value)}
+              className="sort-select"
+            >
+              <option value="newest">Most Recent</option>
+              <option value="oldest">Oldest First</option>
+            </select>
+          </div>
         </div>
       </div>
       
       {error && (
         <div className="alert alert-error">
           {error}
+        </div>
+      )}
+
+      {sortedCustomers.length === 0 && searchTerm && (
+        <div className="empty-state" style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
+          <p>No archived customers found matching "{searchTerm}"</p>
         </div>
       )}
 

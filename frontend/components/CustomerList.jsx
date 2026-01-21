@@ -10,6 +10,19 @@ export default function CustomerList({ customers, onUpdate }) {
   const [editData, setEditData] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Filter customers based on search term
+  const filteredCustomers = customers.filter(customer => {
+    if (!searchTerm.trim()) return true;
+    const search = searchTerm.toLowerCase();
+    return (
+      customer.name?.toLowerCase().includes(search) ||
+      customer.phone?.toLowerCase().includes(search) ||
+      customer.email?.toLowerCase().includes(search) ||
+      customer.child_name?.toLowerCase().includes(search)
+    );
+  });
 
   const handleDelete = async (id) => {
     if (!confirm('Are you sure you want to delete this customer? This will also delete all associated reminders.')) {
@@ -78,7 +91,44 @@ export default function CustomerList({ customers, onUpdate }) {
 
   return (
     <div className="customer-list">
-      <h2>Customers ({customers.length})</h2>
+      <div className="list-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '15px' }}>
+        <h2 style={{ margin: 0 }}>Customers ({filteredCustomers.length}{searchTerm ? ` of ${customers.length}` : ''})</h2>
+        <div className="search-box" style={{ position: 'relative' }}>
+          <input
+            type="text"
+            placeholder="🔍 Search by name, phone, email..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{
+              padding: '8px 12px',
+              paddingRight: '30px',
+              borderRadius: '6px',
+              border: '1px solid #ddd',
+              width: '250px',
+              fontSize: '14px'
+            }}
+          />
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm('')}
+              style={{
+                position: 'absolute',
+                right: '8px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '16px',
+                color: '#999'
+              }}
+              title="Clear search"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      </div>
       
       {error && (
         <div className="alert alert-error">
@@ -86,8 +136,14 @@ export default function CustomerList({ customers, onUpdate }) {
         </div>
       )}
 
+      {filteredCustomers.length === 0 && searchTerm && (
+        <div className="empty-state" style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
+          <p>No customers found matching "{searchTerm}"</p>
+        </div>
+      )}
+
       <div className="customer-grid">
-        {customers.map(customer => (
+        {filteredCustomers.map(customer => (
           <div key={customer.id} className="customer-card">
             {editingId === customer.id ? (
               <div className="edit-form">
